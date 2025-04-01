@@ -1,7 +1,9 @@
 .env
 
 modules/__init__.py
+modules/scambi_bot.session
 
+logs
 .venv
 .idea
 __pycache__

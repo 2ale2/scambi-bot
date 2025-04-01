@@ -1,14 +1,9 @@
-import os
 import asyncio
-import logging
-import json
 
 import pyrogram.errors
 from dotenv import load_dotenv
-from pyrogram import Client
+from globals import bot_data
 from utils import *
-
-bot_data = {}
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -25,21 +20,27 @@ async def post_init(app: Client):
 
     if await is_table_empty():
         await conn.execute("INSERT INTO persistence (data) VALUES (DEFAULT);")
-        db_logger.warn("Persistence table was empty. Trying env Group ID.")
+        db_logger.warning("Persistence table was empty. Trying env Group ID.")
         bot_data["group_id"] = os.getenv("GROUP_ID")
         try:
-            await app.get_chat_member(bot_data["group_id"], "me")
+            await app.get_chat_member(int(bot_data["group_id"]), "me")
         except pyrogram.errors.RPCError:
             bot_logger.error("Group ID not actual! Change it in the .env file.")
             exit(1)
         else:
             bot_logger.info("Group ID was correct. Editing DB...")
-            await save_persistence(json.dumps(bot_data))
-    else:
-        res = await conn.execute("SELECT data FROM persistence;")
-        bot_data["group_id"] = res
+            for el in ["owner_id", "admin_id"]:
+                if (el_id := os.getenv(el.upper())) is not None:
+                    bot_data[el] = int(el_id)
 
-    pass
+            await save_persistence(json.dumps({"jsondata": bot_data}))
+    else:
+        res = await conn.fetch("SELECT data FROM persistence;")
+        data = json.loads(next(res[0].values()))["jsondata"]
+        for el in ["group_id", "owner_id", "admin_id"]:
+            bot_data[el] = int(data[el]) if el in data else int(os.getenv(el.upper()))
+
+    await add_handlers(app)
 
 
 async def main():
@@ -49,7 +50,10 @@ async def main():
         api_hash=os.getenv("API_HASH"),
         bot_token=os.getenv("BOT_TOKEN")
     )
-    await post_init(app)
+
+    async with app:
+        await post_init(app)
+        await asyncio.Event().wait()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,14 @@
+import json
 import logging
 import os
 
 import asyncpg
+
+from pyrogram import Client, filters
+from pyrogram.handlers import MessageHandler, CallbackQueryHandler
+
+from globals import bot_data
+import core
 
 db_logger = logging.getLogger("dblogger")
 db_logger.setLevel(logging.INFO)
@@ -40,7 +47,13 @@ async def is_table_empty():
         db_logger.error(err)
         raise
     else:
-        conn.close()
+        if count == 1:
+            res = await conn.fetch("SELECT data FROM persistence;")
+            if len(json.loads(next(res[0].values()))["jsondata"]) == 0:
+                # noinspection SqlWithoutWhere
+                await conn.execute("DELETE FROM persistence;")
+                return True
+        await conn.close()
         return count == 0
     
 
@@ -48,8 +61,23 @@ async def save_persistence(json_content: str):
     conn = await connect_to_database()
     try:
         # noinspection SqlWithoutWhere
-        await conn.execute("UPDATE persistence SET data = %s;", json_content)
+        await conn.execute("UPDATE persistence SET data = $1;", json_content)
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
     finally:
-        conn.close()
+        await conn.close()
+
+
+async def add_handlers(app: Client):
+    app.add_handler(
+        MessageHandler(
+            callback=core.start,
+            filters=filters.command("start")
+        )
+    )
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.close_message,
+            filters=filters.regex(r"^close:")
+        )
+    )

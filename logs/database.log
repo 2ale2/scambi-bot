@@ -1,0 +1,10 @@
+2025-04-01 12:24:00,954 - dblogger - WARNING - Persistence table was empty. Trying env Group ID.
+2025-04-01 12:31:01,834 - dblogger - WARNING - Persistence table was empty. Trying env Group ID.
+2025-04-01 12:33:24,769 - dblogger - WARNING - Persistence table was empty. Trying env Group ID.
+2025-04-01 12:33:32,194 - dblogger - ERROR - Group ID not actual! Change it in the .env file.
+2025-04-01 12:35:11,820 - dblogger - WARNING - Persistence table was empty. Trying env Group ID.
+2025-04-01 12:35:59,862 - dblogger - ERROR - Group ID not actual! Change it in the .env file.
+2025-04-01 12:38:00,443 - dblogger - WARNING - Persistence table was empty. Trying env Group ID.
+2025-04-01 12:38:07,592 - dblogger - INFO - Group ID was correct. Editing DB...
+2025-04-01 12:39:54,276 - dblogger - WARNING - Persistence table was empty. Trying env Group ID.
+2025-04-01 12:39:54,405 - dblogger - INFO - Group ID was correct. Editing DB...
