@@ -20,7 +20,7 @@ async def start(client: Client, message: Message):
 async def exchange(client: Client, message: Message):
     global bot_data
     original_message = deepcopy(message)
-    # await message.delete()
+    await message.delete()
 
     sender = original_message.from_user.id
 
@@ -70,5 +70,7 @@ async def send_message_with_close_button(client: Client, message: Message, text:
     )
 
 
+# serve per evitare eccezioni
+# noinspection PyUnusedLocal
 async def close_message(client: Client, callback_query: CallbackQuery):
     await callback_query.message.delete()
