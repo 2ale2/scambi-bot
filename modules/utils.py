@@ -75,9 +75,17 @@ async def add_handlers(app: Client):
             filters=filters.command("start")
         )
     )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.exchange,
+            filters=filters.command("feedback")
+        )
+    )
+
     app.add_handler(
         CallbackQueryHandler(
             callback=core.close_message,
-            filters=filters.regex(r"^close:")
+            filters=filters.regex(r"^close.*")
         )
     )

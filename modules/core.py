@@ -1,6 +1,10 @@
+import re
+
 from pyrogram import Client
+from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from globals import bot_data
+from copy import deepcopy
 
 
 async def start(client: Client, message: Message):
@@ -15,25 +19,41 @@ async def start(client: Client, message: Message):
 
 async def exchange(client: Client, message: Message):
     global bot_data
-    await message.delete()
+    original_message = deepcopy(message)
+    # await message.delete()
 
-    sender = message.from_user.id
+    sender = original_message.from_user.id
 
-    if message.caption is None:
+    if original_message.caption is None:
         text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
-        await send_message_with_close_button(client, message, text)
+        await send_message_with_close_button(client, original_message, text)
         return
 
-    splitted = message.caption.split(maxsplit=2)
+    pattern = r"[/.!](\w+)(?:\s+(@\w+|(\d{7,})|<a\s+href=\"tg://user\?id=(\d{7,})\">.*?</a>))?\s*(.*)?"
 
-    if len(splitted) < 3:
-        text = ("⚠️ Usa il <b>formato corretto</b>.\n\n"
-                "<code>/scambio @utente feedback</code>\n\n"
-                "Ricordati di allegare anche uno screenshot 📸.")
-        await send_message_with_close_button(client, message, text)
+    match = re.match(pattern, original_message.caption)
 
-    # GESTIRE LA MENZIONE SENZA USERNAME
-    recipient = await client.get_chat_member(bot_data["group_id"], splitted[1])
+    action = match.group(1)
+    mentioned = match.group(2) or None
+    if mentioned is None:
+        text = "⚠️ Indica l'<b>utente</b> con cui hai effettuato lo scambio."
+        await send_message_with_close_button(client, original_message, text)
+        return
+
+    user = match.group(3) or match.group(4) or match.group(2)
+    feedback = match.group(5) or None
+    if feedback is None:
+        text = "⚠️ Aggiungi un <b>feedback</b> per assegnare lo scambio."
+        await send_message_with_close_button(client, original_message, text)
+        return
+
+    await client.send_message(
+        chat_id=original_message.chat.id,
+        text=f"Comando: {action}\n"
+             f"Utente rilevato: {user}\n"
+             f"Feedback: <i>{feedback}</i>",
+        parse_mode=ParseMode.HTML
+    )
 
 
 async def send_message_with_close_button(client: Client, message: Message, text: str):
@@ -45,10 +65,10 @@ async def send_message_with_close_button(client: Client, message: Message, text:
     await client.send_message(
         chat_id=message.chat.id,
         text=text,
-        parse_mode="html",
+        parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-async def close_message(callback_query: CallbackQuery):
+async def close_message(client: Client, callback_query: CallbackQuery):
     await callback_query.message.delete()
