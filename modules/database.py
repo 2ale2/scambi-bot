@@ -61,23 +61,36 @@ async def get_columns_order(conn, table_name: str):
 
 async def add_to_table(table_name: str, content: dict):
     """
-        Aggiunge entry al database.
-        :param table_name: il nome della tabella
-        :param content: dizionario del tipo {'colonna 1': 'valore 1'}
-        :return:
-        """
+    Aggiunge entry al database. Se l'utente esiste, aggiorna punti e username.
+    Se i punti arrivano a 6, vengono azzerati e viene notificato il reset.
+
+    :param table_name: il nome della tabella
+    :param content: dizionario del tipo {'colonna1': valore1, ...}
+    :return: {'reset': True} se punti sono stati azzerati, altrimenti {'reset': False}
+    """
     conn = await connect_to_database()
     try:
         columns_order = await get_columns_order(conn, table_name)
         ordered_content = {col: content[col] for col in columns_order if col in content}
         if not ordered_content:
-            raise asyncpg.exceptions.DataError('colonne non valide')
+            raise asyncpg.exceptions.DataError('Colonne non valide')
 
-        columns = ordered_content.keys()
-        values = ordered_content.values()
-        query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join([f'${i + 1}' for i in range(len(values))])})"
+        columns = list(ordered_content.keys())
+        values = list(ordered_content.values())
 
-        await conn.execute(query, *values)
+        query = (
+            f"INSERT INTO {table_name} ({', '.join(columns)}) "
+            f"VALUES ({', '.join([f'${i + 1}' for i in range(len(values))])}) "
+            f"ON CONFLICT (user_id) DO UPDATE SET "
+            f"punti = CASE WHEN {table_name}.punti + 1 >= 6 THEN 0 ELSE {table_name}.punti + 1 END, "
+            f"username = EXCLUDED.username "
+            f"RETURNING punti"
+        )
+
+        result = await conn.fetchval(query, *values)
+
+        return result == 0 if result else False
+
     except Exception as e:
         db_logger.error(f"Errore durante l'inserimento in {table_name}: {e}")
         bot_logger.error("Errore nel database. Vedi i log del database.")

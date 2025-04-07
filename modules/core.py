@@ -1,3 +1,4 @@
+import os
 import re
 
 from pyrogram import Client
@@ -5,6 +6,8 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from globals import bot_data
 from copy import deepcopy
+
+from modules.database import add_to_table
 
 
 async def start(client: Client, message: Message):
@@ -22,7 +25,7 @@ async def exchange(client: Client, message: Message):
     original_message = deepcopy(message)
     await message.delete()
 
-    sender = original_message.from_user.id
+    sender = original_message.from_user
 
     if original_message.caption is None:
         text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
@@ -46,6 +49,63 @@ async def exchange(client: Client, message: Message):
         text = "⚠️ Aggiungi un <b>feedback</b> per assegnare lo scambio."
         await send_message_with_close_button(client, original_message, text)
         return
+
+    try:
+        recipient = await client.get_chat_member(
+            chat_id=message.chat.id,
+            user_id=user
+        )
+    except ValueError:
+        await send_message_with_close_button(
+            client=client,
+            message=original_message,
+            text="⚠️ Warning\n\n▪️ L'utente sembra non esistere."
+        )
+        return
+
+    if recipient.status == "LEFT":
+        await send_message_with_close_button(
+            client=client,
+            message=original_message,
+            text="⚠️ Warning\n\n▪️ L'utente non è nel gruppo."
+        )
+        return
+
+    if recipient.status == "BANNED":
+        await send_message_with_close_button(
+            client=client,
+            message=original_message,
+            text="⚠️ Warning\n\n▪️ Non puoi assegnare punti a utenti bannati."
+        )
+        return
+
+    reset_sender = await add_to_table(
+        table_name="main_table",
+        content={
+            "user_id": sender.id,
+            "username": sender.username
+        }
+    )
+
+    reset_recipient = await add_to_table(
+        table_name="main_table",
+        content={
+            "user_id": recipient.user.id,
+            "username": recipient.user.username
+        }
+    )
+
+    if reset_sender:
+        await client.send_message(
+            chat_id=os.getenv("OWNER_ID"), # DA METTERE IL CANALE DELLE NOTIFICHE
+            text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
+        )
+
+    if reset_recipient:
+        await client.send_message(
+            chat_id=os.getenv("OWNER_ID"), # DA METTERE IL CANALE DELLE NOTIFICHE
+            text=f"🎯 L'utente {reset_recipient.user.mention} ha ottenuto 6 punti."
+        )
 
     await client.send_message(
         chat_id=original_message.chat.id,
