@@ -1,10 +1,11 @@
 import logging
+import asyncpg
+import os
 
 from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 
 from globals import bot_data
-from database import *
 import core
 
 db_logger = logging.getLogger("dblogger")
@@ -53,3 +54,18 @@ async def add_handlers(app: Client):
             filters=filters.regex(r"^close.*")
         )
     )
+
+
+async def connect_to_database():
+    try:
+        conn = await asyncpg.connect(
+            host=os.getenv("DB_HOST"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASS"),
+            database=os.getenv("DB_NAME")
+        )
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        raise
+    else:
+        return conn

@@ -1,23 +1,7 @@
 import asyncpg
-import os
 import json
 
-from modules.utils import db_logger, bot_logger
-
-
-async def connect_to_database():
-    try:
-        conn = await asyncpg.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASS"),
-            database=os.getenv("DB_NAME")
-        )
-    except asyncpg.exceptions.PostgresError as err:
-        db_logger.error(err)
-        raise
-    else:
-        return conn
+from modules.utils import db_logger, bot_logger, connect_to_database
 
 
 async def is_table_empty():
@@ -82,9 +66,9 @@ async def add_to_table(table_name: str, content: dict):
             f"INSERT INTO {table_name} ({', '.join(columns)}) "
             f"VALUES ({', '.join([f'${i + 1}' for i in range(len(values))])}) "
             f"ON CONFLICT (user_id) DO UPDATE SET "
-            f"punti = CASE WHEN {table_name}.punti + 1 >= 6 THEN 0 ELSE {table_name}.punti + 1 END, "
+            f"points = CASE WHEN {table_name}.points + 1 >= 6 THEN 0 ELSE {table_name}.points + 1 END, "
             f"username = EXCLUDED.username "
-            f"RETURNING punti"
+            f"RETURNING points"
         )
 
         result = await conn.fetchval(query, *values)
