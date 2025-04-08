@@ -1,7 +1,8 @@
 import asyncpg
 import json
 
-from modules.utils import db_logger, bot_logger, connect_to_database
+from modules.utils import connect_to_database
+from loggers import db_logger, bot_logger
 
 
 async def is_table_empty():
@@ -65,15 +66,20 @@ async def add_to_table(table_name: str, content: dict):
         query = (
             f"INSERT INTO {table_name} ({', '.join(columns)}) "
             f"VALUES ({', '.join([f'${i + 1}' for i in range(len(values))])}) "
-            f"ON CONFLICT (user_id) DO UPDATE SET "
-            f"points = CASE WHEN {table_name}.points + 1 >= 6 THEN 0 ELSE {table_name}.points + 1 END, "
-            f"username = EXCLUDED.username "
-            f"RETURNING points"
         )
 
-        result = await conn.fetchval(query, *values)
+        if table_name == "main_table":
+            query += (
+                f"ON CONFLICT (user_id) DO UPDATE SET "
+                f"points = CASE WHEN {table_name}.points + 1 >= 6 THEN 0 ELSE {table_name}.points + 1 END, "
+                f"username = EXCLUDED.username "
+                f"RETURNING points"
+            )
+        else:
+            query += "RETURNING id"
 
-        return result == 0 if result else False
+        result = await conn.fetchval(query, *values)
+        return result
 
     except Exception as e:
         db_logger.error(f"Errore durante l'inserimento in {table_name}: {e}")

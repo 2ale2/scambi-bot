@@ -1,25 +1,11 @@
-import logging
 import asyncpg
 import os
 
 from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
-
+from loggers import db_logger
 from globals import bot_data
 import core
-
-db_logger = logging.getLogger("dblogger")
-db_logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler = logging.FileHandler(os.path.join("logs", "database.log"))
-file_handler.setFormatter(formatter)
-db_logger.addHandler(file_handler)
-
-bot_logger = logging.getLogger("dblogger")
-bot_logger.setLevel(logging.INFO)
-file_handler = logging.FileHandler(os.path.join("logs", "bot.log"))
-file_handler.setFormatter(formatter)
-bot_logger.addHandler(file_handler)
 
 
 async def save_persistence(json_content: str):

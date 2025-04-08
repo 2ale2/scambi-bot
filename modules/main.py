@@ -1,7 +1,8 @@
 import os
 import logging
 import json
-from utils import db_logger, bot_logger, save_persistence, add_handlers, connect_to_database
+from utils import save_persistence, add_handlers, connect_to_database
+from loggers import db_logger, bot_logger
 from database import is_table_empty
 
 from pyrogram import Client

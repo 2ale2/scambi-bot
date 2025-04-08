@@ -2,6 +2,8 @@
 
 modules/__init__.py
 modules/scambi_bot.session
+modules/scambi_bot.session-shm
+modules/scambi_bot.session-wal
 
 logs
 .venv
