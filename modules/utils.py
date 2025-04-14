@@ -41,6 +41,13 @@ async def add_handlers(app: Client):
         )
     )
 
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.cancel_exchange,
+            filters=filters.regex(r"^cancel_exchange.*")
+        )
+    )
+
 
 async def connect_to_database():
     try:

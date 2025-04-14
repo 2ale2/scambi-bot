@@ -87,3 +87,38 @@ async def add_to_table(table_name: str, content: dict):
         raise
     finally:
         await conn.close()
+
+
+async def decrease_user_points(user_id: int | str, points=1):
+    conn = await connect_to_database()
+    try:
+        points = await conn.execute(
+            query=f"UPDATE main_table SET "
+                  f"points IF(main_table.points = 0, 5, main_table.points - 1),"
+                  f"WHERE user_id={user_id} RETURNING points",
+        )
+        return points
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        raise
+    finally:
+        await conn.close()
+
+
+async def get_exchange_infos(identifier: int | str):
+    conn = await connect_to_database()
+    try:
+        raw = await conn.fetchrow(
+            query=f"SELECT * FROM exchanges WHERE id={str(identifier)};",
+        )
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        raise
+    else:
+        if raw is None:
+            db_logger.error(f"{identifier} non esistente in 'exchanges'")
+            raise asyncpg.exceptions.PostgresError(f"{identifier} non esistente in 'exchanges'")
+        else:
+            return {key: raw[key] for key in dict(raw)}
+    finally:
+        await conn.close()

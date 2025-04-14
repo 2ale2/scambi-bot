@@ -1,3 +1,4 @@
+import json
 import os
 import re
 
@@ -8,8 +9,9 @@ from globals import bot_data
 from datetime import datetime
 import pytz
 
-from modules.database import add_to_table
+from modules.database import add_to_table, get_exchange_infos, decrease_user_points
 from modules.loggers import db_logger
+from modules.utils import save_persistence
 
 
 async def start(client: Client, message: Message):
@@ -126,20 +128,22 @@ async def exchange(client: Client, message: Message):
         db_logger.info(msg=f"Wrote Database Correctly (id #{added_id}).")
 
     if points_sender == 0:
-        await send_message_with_close_button(
+        bot_data[added_id]["member_1_gift_notification"] = await send_message_with_close_button(
             client=client,
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),  # DA METTERE IL CANALE DELLE NOTIFICHE
+            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
             message=message,
             text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
         )
+        await save_persistence(json.dumps({"jsondata": bot_data}))
 
     if points_recipient == 0:
-        await send_message_with_close_button(
+        bot_data[added_id]["member_2_gift_notification"] = await send_message_with_close_button(
             client=client,
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),  # DA METTERE IL CANALE DELLE NOTIFICHE
+            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
             message=message,
             text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
         )
+        await save_persistence(json.dumps({"jsondata": bot_data}))
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
@@ -154,8 +158,7 @@ async def exchange(client: Client, message: Message):
 
     keyboard = [
         [
-            InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"cancel_exchange_{added_id}"),
-            InlineKeyboardButton("🗃 Conferma e Chiudi", callback_data=f"close_exchange_notification"),
+            InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"cancel_exchange_{added_id}")
         ]
     ]
 
@@ -169,18 +172,41 @@ async def exchange(client: Client, message: Message):
     await message.delete()
 
 
+async def cancel_exchange(client: Client, callback_query: CallbackQuery):
+    exchange_infos = await get_exchange_infos(callback_query.data.split("_")[-1])
+    # devo:
+    # - togliere un punto a member_1 e member_2 (se 0, passa a 5)
+    # - cambiare la colonna 'cancelled' in exchanges da False a True
+    # - notificare sul gruppo
+    points_sender = await decrease_user_points(exchange_infos["member_1"])
+    points_recipient = await decrease_user_points(exchange_infos["member_2"])
+
+    if points_sender is None:
+        db_logger.error(f"{exchange_infos['member_1']} non trovato!")
+        raise Exception(f"{exchange_infos['member_1']} non trovato!")
+    if points_recipient is None:
+        db_logger.error(f"{exchange_infos['member_2']} non trovato!")
+        raise Exception(f"{exchange_infos['member_2']} non trovato!")
+
+    if points_sender == 5:
+        await bot_data["member_1_gift_notification"].delete()
+    if points_recipient == 5:
+        await bot_data["member_2_gift_notification"].delete()
+
+
 async def send_message_with_close_button(client: Client, message: Message, text: str, chat_id=None):
     keyboard = [
         [
             InlineKeyboardButton("🚮 Chiudi", callback_data=f"close")
         ]
     ]
-    await client.send_message(
+    message = await client.send_message(
         chat_id=int(chat_id) if chat_id is not None else message.chat.id,
         text=text,
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+    return message
 
 
 # serve per evitare eccezioni
