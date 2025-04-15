@@ -92,12 +92,24 @@ async def add_to_table(table_name: str, content: dict):
 async def decrease_user_points(user_id: int | str, points=1):
     conn = await connect_to_database()
     try:
-        points = await conn.execute(
-            query=f"UPDATE main_table SET "
-                  f"points IF(main_table.points = 0, 5, main_table.points - 1),"
-                  f"WHERE user_id={user_id} RETURNING points",
+        points = await conn.fetchval(
+            query=f"UPDATE main_table SET points = CASE WHEN points = 0 THEN 5 ELSE points - 1 END "
+                  f"WHERE user_id = {user_id} RETURNING points;",
         )
         return points
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        raise
+    finally:
+        await conn.close()
+
+
+async def set_exchange_cancelled(identifier: int | str):
+    conn = await connect_to_database()
+    try:
+        await conn.execute(
+            query=f"UPDATE exchanges SET cancelled=true WHERE id={identifier}"
+        )
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
         raise

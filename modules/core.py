@@ -5,12 +5,13 @@ import re
 from pyrogram import Client
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from pyrogram.errors import RPCError
 from globals import bot_data
 from datetime import datetime
 import pytz
 
-from modules.database import add_to_table, get_exchange_infos, decrease_user_points
-from modules.loggers import db_logger
+from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled
+from modules.loggers import db_logger, bot_logger
 from modules.utils import save_persistence
 
 
@@ -128,33 +129,39 @@ async def exchange(client: Client, message: Message):
         db_logger.info(msg=f"Wrote Database Correctly (id #{added_id}).")
 
     if points_sender == 0:
-        bot_data[added_id]["member_1_gift_notification"] = await send_message_with_close_button(
+        if added_id not in bot_data:
+            bot_data[int(added_id)] = {}
+        sent_message = await send_message_with_close_button(
             client=client,
             chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
             message=message,
             text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
         )
+        bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
         await save_persistence(json.dumps({"jsondata": bot_data}))
 
     if points_recipient == 0:
-        bot_data[added_id]["member_2_gift_notification"] = await send_message_with_close_button(
+        if added_id not in bot_data:
+            bot_data[int(added_id)] = {}
+        sent_message = await send_message_with_close_button(
             client=client,
             chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
             message=message,
-            text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
+            text=f"🎯 L'utente {recipient.user.mention} ha ottenuto 6 punti."
         )
+        bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
         await save_persistence(json.dumps({"jsondata": bot_data}))
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
-        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} ({sender.id}) 🡒 6 (+1)\n"
+        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → 6 (+1)\n"
     else:
-        text += f"🔸 <u><i>Sender</i></u> {message.from_user.mention} ({sender.id}) 🡒 {points_sender} (+1)\n"
+        text += f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender} (+1)\n"
 
     if points_recipient == 0:
-        text += f"🎁 <u><i>Recipient</i></u> {recipient.user.mention} ({recipient.user.id}) 🡒 6 (+1)\n"
+        text += f"🎁 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → 6 (+1)\n"
     else:
-        text += f"🔹 <u><i>Recipient</i></u> {recipient.user.mention} ({recipient.user.id}) 🡒 {points_recipient} (+1)\n"
+        text += f"🔹 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → {points_recipient} (+1)\n"
 
     keyboard = [
         [
@@ -174,10 +181,6 @@ async def exchange(client: Client, message: Message):
 
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):
     exchange_infos = await get_exchange_infos(callback_query.data.split("_")[-1])
-    # devo:
-    # - togliere un punto a member_1 e member_2 (se 0, passa a 5)
-    # - cambiare la colonna 'cancelled' in exchanges da False a True
-    # - notificare sul gruppo
     points_sender = await decrease_user_points(exchange_infos["member_1"])
     points_recipient = await decrease_user_points(exchange_infos["member_2"])
 
@@ -189,12 +192,43 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
         raise Exception(f"{exchange_infos['member_2']} non trovato!")
 
     if points_sender == 5:
-        await bot_data["member_1_gift_notification"].delete()
+        await client.delete_messages(
+            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            message_ids=bot_data[int(exchange_infos["id"])]["member_1_gift_notification"]
+        )
     if points_recipient == 5:
-        await bot_data["member_2_gift_notification"].delete()
+        await client.delete_messages(
+            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            message_ids=bot_data[int(exchange_infos["id"])]["member_2_gift_notification"]
+        )
+
+    member_1 = await client.get_chat_member(
+        chat_id=callback_query.message.chat.id,
+        user_id=exchange_infos["member_1"]
+    )
+
+    member_2 = await client.get_chat_member(
+        chat_id=callback_query.message.chat.id,
+        user_id=exchange_infos["member_2"]
+    )
+
+    await set_exchange_cancelled(exchange_infos["id"])
+
+    await send_message_with_close_button(
+        client=client,
+        message=None,
+        chat_id=callback_query.message.chat.id,
+        text=f"♻️ Scambio tra {member_1.user.mention} ({points_sender}) "
+             f"e {member_2.user.mention} ({points_recipient}) <b>cancellato</b>."
+    )
+
+    await callback_query.message.delete()
 
 
-async def send_message_with_close_button(client: Client, message: Message, text: str, chat_id=None):
+async def send_message_with_close_button(client: Client, message: Message | None, text: str, chat_id=None):
+    if message is None and chat_id is None:
+        bot_logger.error("almeno uno tra 'message' e 'chat_id' deve essere definito")
+        raise RPCError("almeno uno tra 'message' e 'chat_id' deve essere definito")
     keyboard = [
         [
             InlineKeyboardButton("🚮 Chiudi", callback_data=f"close")
