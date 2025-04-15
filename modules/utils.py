@@ -48,6 +48,13 @@ async def add_handlers(app: Client):
         )
     )
 
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.user_exchanges,
+            filters=filters.regex(r"^search_by_user.")
+        )
+    )
+
 
 async def connect_to_database():
     try:

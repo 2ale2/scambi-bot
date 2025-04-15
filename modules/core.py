@@ -17,12 +17,24 @@ from modules.utils import save_persistence
 
 async def start(client: Client, message: Message):
     global bot_data
-    if message.chat.id == bot_data["owner_id"] or message.chat.id == bot_data["admin_id"]:
-        await client.send_message(
-            chat_id=message.chat.id,
-            text=f"Ciao, {message.from_user.first_name}.\n\n"
-                 f"Questo messaggio conferma che il bot ti sta riconoscendo come admin."
-        )
+    if not await is_admin(message.from_user.id):
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(text="🔎 Filtra Scambi per Utente", callback_data="search_by_user")
+        ],
+        [
+            InlineKeyboardButton(text="#️⃣ Controlla Punti Utente", callback_data="get_user_points")
+        ]
+    ]
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=f"🎲 Ciao, {message.from_user.first_name}.\n\n"
+             f"🔹 Scegli un'opzione.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 async def exchange(client: Client, message: Message):
@@ -180,6 +192,8 @@ async def exchange(client: Client, message: Message):
 
 
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):
+    if not await is_admin(callback_query.from_user.id):
+        return
     exchange_infos = await get_exchange_infos(callback_query.data.split("_")[-1])
     points_sender = await decrease_user_points(exchange_infos["member_1"])
     points_recipient = await decrease_user_points(exchange_infos["member_2"])
@@ -241,6 +255,14 @@ async def send_message_with_close_button(client: Client, message: Message | None
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return message
+
+
+async def user_exchanges(client: Client, callback_query: CallbackQuery):
+    pass
+
+
+async def is_admin(user_id: int | str) -> bool:
+    return int(user_id) in [8101457635, 6710922454, 6602225958]
 
 
 # serve per evitare eccezioni
