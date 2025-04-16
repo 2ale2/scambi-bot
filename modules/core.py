@@ -257,6 +257,8 @@ async def send_message_with_close_button(client: Client, message: Message | None
 
 
 async def user_exchanges(client: Client, message: Message):
+    # aggiungere controllo admin
+
     if len(message.command) <= 1:
         await send_message_with_close_button(
             client=client,
