@@ -23,14 +23,20 @@ async def add_handlers(app: Client):
     app.add_handler(
         MessageHandler(
             callback=core.start,
-            filters=filters.command("start")
+            filters=filters.command(
+                commands="start",
+                prefixes=list(".!/")
+            )
         )
     )
 
     app.add_handler(
         MessageHandler(
             callback=core.exchange,
-            filters=filters.command("feedback")
+            filters=filters.command(
+                commands="feedback",
+                prefixes=list(".!/")
+            )
         )
     )
 
@@ -49,9 +55,22 @@ async def add_handlers(app: Client):
     )
 
     app.add_handler(
-        CallbackQueryHandler(
+        MessageHandler(
             callback=core.user_exchanges,
-            filters=filters.regex(r"^search_by_user.")
+            filters=filters.command(
+                commands="scambi",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.user_exchanges,
+            filters=filters.command(
+                commands="punti",
+                prefixes=list(".!/")
+            )
         )
     )
 

@@ -20,20 +20,19 @@ async def start(client: Client, message: Message):
     if not await is_admin(message.from_user.id):
         return
 
-    keyboard = [
-        [
-            InlineKeyboardButton(text="🔎 Filtra Scambi per Utente", callback_data="search_by_user")
-        ],
-        [
-            InlineKeyboardButton(text="#️⃣ Controlla Punti Utente", callback_data="get_user_points")
-        ]
-    ]
+    await message.delete()
 
-    await client.send_message(
+    text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
+            f"🔹 Ecco una lista dei comandi:\n\n"
+            f"\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato.\n"
+            f"\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
+            f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>")
+
+    await send_message_with_close_button(
+        client=client,
         chat_id=message.chat.id,
-        text=f"🎲 Ciao, {message.from_user.first_name}.\n\n"
-             f"🔹 Scegli un'opzione.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        message=None,
+        text=text
     )
 
 
@@ -257,8 +256,51 @@ async def send_message_with_close_button(client: Client, message: Message | None
     return message
 
 
-async def user_exchanges(client: Client, callback_query: CallbackQuery):
-    pass
+async def user_exchanges(client: Client, message: Message):
+    if len(message.command) <= 1:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ Devi specificare un utente.\n\n"
+                 f"<b>Esempio</b>:\n\t<code>/scambi @username</code>\n\t<code>/scambi 7654321</code>"
+        )
+        return
+
+    user = message.command[1]
+
+    if not user.startswith("@") and not user.isnumeric():
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ Se specifichi un <b>ID</b>, assicurati di <b>non inserire caratteri non numerici</b>. "
+                 "Se invece indichi uno <b>username<b>, assicurati di <b>aggiungere \"@\"</b> (es.: "
+                 "<code>@username</code>, non <code>username</code>)."
+        )
+        return
+
+    if not user.isnumeric():
+        try:
+            tagged = await client.get_chat_member(
+                chat_id=os.getenv("GROUP_CHAT_ID"),
+                user_id=user
+            )
+        except RPCError as e:
+            bot_logger.error(f"error retrieving user {user} from group: {e}")
+            tagged = None
+            pass
+
+        if not tagged:
+            await send_message_with_close_button(
+                client=client,
+                message=message,
+                text=f"⚠️ L'utente {user} non è stato trovato nel gruppo. Riprova, oppure usa il comando col suo ID."
+            )
+            return
+    else:
+        tagged = user
+
+    # interroga il database
+    # componi il messaggio con gli scambi e invialo
 
 
 async def is_admin(user_id: int | str) -> bool:
