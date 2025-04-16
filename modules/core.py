@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from idlelib.window import add_windows_to_menu
 
 from pyrogram import Client
 from pyrogram.enums import ParseMode
@@ -10,7 +11,8 @@ from globals import bot_data
 from datetime import datetime
 import pytz
 
-from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled
+from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled, \
+    get_user_exchanges
 from modules.loggers import db_logger, bot_logger
 from modules.utils import save_persistence
 
@@ -257,7 +259,8 @@ async def send_message_with_close_button(client: Client, message: Message | None
 
 
 async def user_exchanges(client: Client, message: Message):
-    # aggiungere controllo admin
+    if not await is_admin(message.from_user.id):
+        return
 
     if len(message.command) <= 1:
         await send_message_with_close_button(
@@ -280,28 +283,47 @@ async def user_exchanges(client: Client, message: Message):
         )
         return
 
-    if not user.isnumeric():
-        try:
-            tagged = await client.get_chat_member(
-                chat_id=os.getenv("GROUP_CHAT_ID"),
-                user_id=user
-            )
-        except RPCError as e:
-            bot_logger.error(f"error retrieving user {user} from group: {e}")
-            tagged = None
-            pass
+    try:
+        tagged = await client.get_chat_member(
+            chat_id=os.getenv("GROUP_CHAT_ID"),
+            user_id=user
+        )
+    except RPCError as e:
+        bot_logger.error(f"error retrieving user {user} from group: {e}")
+        tagged = None
+        pass
 
-        if not tagged:
-            await send_message_with_close_button(
-                client=client,
-                message=message,
-                text=f"⚠️ L'utente {user} non è stato trovato nel gruppo. Riprova, oppure usa il comando col suo ID."
-            )
-            return
-    else:
-        tagged = user
+    if not tagged:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=f"⚠️ L'utente {user} non è stato trovato nel gruppo. Riprova."
+        )
+        return
 
-    # interroga il database
+    res = await get_user_exchanges(tagged.user.id)
+    if res == -1:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="❌ Non è stato possibile interrogare il database."
+        )
+        return
+
+    if len(res) == 0:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="ℹ️ Sembra che l'utente non abbia fatto alcuno scambio."
+        )
+        return
+
+    text = f"🔎 <b>Scambi di</b> <code>{tagged.user.mention}</code>\n"
+    for count, el in enumerate(res, start=1):
+        if count % 6 != 0:
+            text += (f"\n{count}. Scambio {dict(el)['id']}\n\n"
+                     f"<u>Sender</u>: ")
+
     # componi il messaggio con gli scambi e invialo
 
 

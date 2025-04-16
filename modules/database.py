@@ -104,6 +104,19 @@ async def decrease_user_points(user_id: int | str, points=1):
         await conn.close()
 
 
+async def get_user_exchanges(user_id: int | str):
+    conn = await connect_to_database()
+    try:
+        res = await conn.fetch(
+            query=f"SELECT * FROM exchanges WHERE member_1 = {user_id} OR member_2 = {user_id}"
+        )
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        return -1
+    else:
+        return res
+
+
 async def set_exchange_cancelled(identifier: int | str):
     conn = await connect_to_database()
     try:
