@@ -1,12 +1,11 @@
 import json
 import os
 import re
-from idlelib.window import add_windows_to_menu
-
+import locale
 from pyrogram import Client
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from pyrogram.errors import RPCError
+from pyrogram.errors import RPCError, UsernameNotOccupied, PeerIdInvalid
 from globals import bot_data
 from datetime import datetime
 import pytz
@@ -76,6 +75,13 @@ async def exchange(client: Client, message: Message):
             client=client,
             message=message,
             text="⚠️ Warning\n\n▪️ L'utente sembra non esistere."
+        )
+        return
+    except UsernameNotOccupied:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ Warning\n\n▪️ L'utente potrebbe aver cambiare username."
         )
         return
 
@@ -273,6 +279,8 @@ async def user_exchanges(client: Client, message: Message):
 
     user = message.command[1]
 
+    locale.setlocale(locale.LC_TIME, 'it_IT.UTF-8')
+
     if not user.startswith("@") and not user.isnumeric():
         await send_message_with_close_button(
             client=client,
@@ -285,19 +293,15 @@ async def user_exchanges(client: Client, message: Message):
 
     try:
         tagged = await client.get_chat_member(
-            chat_id=os.getenv("GROUP_CHAT_ID"),
-            user_id=user
+            chat_id=os.getenv("GROUP_ID"),
+            user_id=int(user) if user.isnumeric() else str(user)
         )
-    except RPCError as e:
+    except KeyError as e:
         bot_logger.error(f"error retrieving user {user} from group: {e}")
-        tagged = None
-        pass
-
-    if not tagged:
         await send_message_with_close_button(
             client=client,
             message=message,
-            text=f"⚠️ L'utente {user} non è stato trovato nel gruppo. Riprova."
+            text=f"⚠️ L'utente </code>{user}</code> non è stato trovato nel gruppo. Riprova."
         )
         return
 
@@ -318,17 +322,76 @@ async def user_exchanges(client: Client, message: Message):
         )
         return
 
-    text = f"🔎 <b>Scambi di</b> <code>{tagged.user.mention}</code>\n"
+    text = f"🔎 <b>Scambi di {tagged.user.mention} ({len(res)})</b>\n"
     for count, el in enumerate(res, start=1):
-        if count % 6 != 0:
-            text += (f"\n{count}. Scambio {dict(el)['id']}\n\n"
-                     f"<u>Sender</u>: ")
+        try:
+            sender = await client.get_chat_member(
+                chat_id=os.getenv("GROUP_ID"),
+                user_id=dict(el)['member_1']
+            )
+        except PeerIdInvalid:
+            sender = None
+        try:
+            recipient = await client.get_chat_member(
+                chat_id=os.getenv("GROUP_ID"),
+                user_id=dict(el)['member_2']
+            )
+        except PeerIdInvalid:
+            recipient = None
+        if count % 5 != 0:
+            text += f"\n🧩. <b>Scambio {dict(el)['id']}</b>\n\n\t🔹 <u>Sender</u> – "
+            if sender is not None and (sender.status.name != "LEFT" and sender.status.name != "BANNED"):
+                text += f"{sender.user.mention} (<code>{dict(el)['member_1']}</code>)"
+            else:
+                text += f"<code>{dict(el)['member_1']}</code>"
+            if sender is not None and tagged.user.id == sender.user.id:
+                text += " 🔖"
+            text += "\n\t🔸 <u>Recipient</u> – "
+            if recipient is not None and (recipient.status.name != "LEFT" and recipient.status.name != "BANNED"):
+                text += f"{recipient.user.mention} (<code>{dict(el)['member_2']}</code>)"
+            else:
+                text += f"<code>{dict(el)['member_2']}</code>"
+            if recipient is not None and tagged.user.id == recipient.user.id:
+                text += " 🔖"
+            text += f"\n\t🔹 <u>Feedback</u> – <i>{dict(el)['feedback']}</i>"
+            text += f"\n\t🔸 <u>Screenshot</u> – 🔗 <a href=\"{dict(el)['screenshot']}\">Link</a>"
+            text += f"\n\t🔹 <u>Exchange Time</u> – {dict(el)['exchange_time'].strftime('%a %d %b %Y, %H:%M')}"
+            text += f"\n\t🔸 <u>Cancelled</u> – <code>{dict(el)['cancelled']}</code>\n"
+        else:
+            await send_message_with_close_button(
+                client=client,
+                message=message,
+                text=text + "\n\n🆘 Usa il tuo bot di moderazione per maggiori informazioni sugli utenti citati."
+            )
+            text = f"\n🧩. <b>Scambio {dict(el)['id']}</b>\n\n\t🔹 <u>Sender</u> – "
+            if sender.status.name != "LEFT" and sender.status.name != "BANNED":
+                text += f"{sender.user.mention} (<code>{dict(el)['member_1']}</code>)"
+            else:
+                text += f"<code>{dict(el)['member_1']}</code>"
+            if tagged.user.id == sender.user.id:
+                text += " 🔖"
+            text += "\n\t🔸 <u>Recipient</u> – "
+            if recipient.status.name != "LEFT" and recipient.status.name != "BANNED":
+                text += f"{recipient.user.mention} (<code>{dict(el)['member_2']}</code>)"
+            else:
+                text += f"<code>{dict(el)['member_2']}</code>"
+            if tagged.user.id == recipient.user.id:
+                text += " 🔖"
+            text += f"\n\t🔹 <u>Feedback</u> – <i>{dict(el)['feedback']}</i>"
+            text += f"\n\t🔸 <u>Screenshot</u> – 🔗 <a href=\"{dict(el)['screenshot']}\">Link</a>"
+            text += f"\n\t🔹 <u>Exchange Time</u> – {dict(el)['exchange_time'].strftime('%a %d %b %Y, %H:%M')}"
+            text += f"\n\t🔸 <u>Cancelled</u> – <code>{dict(el)['cancelled']}</code>\n"
 
-    # componi il messaggio con gli scambi e invialo
+    if len(res) % 5 != 0:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
+        )
 
 
 async def is_admin(user_id: int | str) -> bool:
-    return int(user_id) in [8101457635, 6710922454, 6602225958]
+    return int(user_id) in [538590507, 8101457635, 6710922454, 6602225958]
 
 
 # serve per evitare eccezioni
