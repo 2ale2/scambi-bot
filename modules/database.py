@@ -94,10 +94,11 @@ async def decrease_user_points(user_id: int | str, points=1):
     conn = await connect_to_database()
     try:
         points = await conn.fetchval(
-            query=f"UPDATE main_table "
-                  f"SET points = CASE WHEN points = 0 THEN 5 ELSE points - 1 END, "
-                  f"total = total - 1, "
-                  f"WHERE user_id = $1 RETURNING points;", user_id
+            f"UPDATE main_table "
+            f"SET points = CASE WHEN points = 0 THEN 5 ELSE points - 1 END, "
+            f"total = total - 1, "
+            f"WHERE user_id = $1 RETURNING points;",
+            user_id
         )
         return points
     except asyncpg.exceptions.PostgresError as err:
