@@ -104,12 +104,16 @@ async def decrease_user_points(user_id: int | str, points=1):
         await conn.close()
 
 
-async def get_user_exchanges(user_id: int | str):
+async def get_user_exchanges(user: int | str):
     conn = await connect_to_database()
+    if user.isnumeric():
+        user = int(user)
+        query = f"SELECT * FROM exchanges WHERE member_1 = $1 OR member_2 = $1"
+    else:
+        user=str(user)
+        query = f"SELECT * FROM exchanges WHERE username_1 = $1 OR username_2 = $1"
     try:
-        res = await conn.fetch(
-            query=f"SELECT * FROM exchanges WHERE member_1 = {user_id} OR member_2 = {user_id}"
-        )
+        res = await conn.fetch(query, user)
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
         return -1

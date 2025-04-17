@@ -5,7 +5,7 @@ import locale
 from pyrogram import Client
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from pyrogram.errors import RPCError, UsernameNotOccupied, PeerIdInvalid
+from pyrogram.errors import RPCError, UsernameNotOccupied, PeerIdInvalid, UserNotParticipant
 from globals import bot_data
 from datetime import datetime
 import pytz
@@ -301,11 +301,13 @@ async def user_exchanges(client: Client, message: Message):
         await send_message_with_close_button(
             client=client,
             message=message,
-            text=f"⚠️ L'utente </code>{user}</code> non è stato trovato nel gruppo. Riprova."
+            text=f"⚠️ Non ho potuto trovare l'utente <code>{user}</code>. Riprova."
         )
         return
+    except Exception:
+        tagged = None
 
-    res = await get_user_exchanges(tagged.user.id)
+    res = await get_user_exchanges(str(tagged.user.id) if tagged is not None else str(user))
     if res == -1:
         await send_message_with_close_button(
             client=client,
@@ -322,21 +324,21 @@ async def user_exchanges(client: Client, message: Message):
         )
         return
 
-    text = f"🔎 <b>Scambi di {tagged.user.mention} ({len(res)})</b>\n"
+    text = f"🔎 <b>Scambi di {tagged.user.mention if tagged is not None else user} ({len(res)})</b>\n"
     for count, el in enumerate(res, start=1):
         try:
             sender = await client.get_chat_member(
                 chat_id=os.getenv("GROUP_ID"),
                 user_id=dict(el)['member_1']
             )
-        except PeerIdInvalid:
+        except Exception:
             sender = None
         try:
             recipient = await client.get_chat_member(
                 chat_id=os.getenv("GROUP_ID"),
                 user_id=dict(el)['member_2']
             )
-        except PeerIdInvalid:
+        except Exception:
             recipient = None
         if count % 5 != 0:
             text += f"\n🧩. <b>Scambio {dict(el)['id']}</b>\n\n\t🔹 <u>Sender</u> – "
@@ -344,39 +346,128 @@ async def user_exchanges(client: Client, message: Message):
                 text += f"{sender.user.mention} (<code>{dict(el)['member_1']}</code>)"
             else:
                 text += f"<code>{dict(el)['member_1']}</code>"
-            if sender is not None and tagged.user.id == sender.user.id:
-                text += " 🔖"
+            if tagged is not None:
+                if sender is not None:
+                    if tagged.user.id == sender.user.id:
+                        text += " 🔖"
+                else:
+                    if tagged.user.id == dict(el)['member_1']:
+                        text += " 🔖"
+            else:
+                if sender is not None:
+                    if user.isnumeric():
+                        if int(user) == sender.user.id:
+                            text += " 🔖"
+                    else:
+                        if sender.user.username is not None:
+                            if user == sender.user.username:
+                                text += " 🔖"
+                        elif user == dict(el)['username_1']:
+                            text += " 🔖"
+                else:
+                    if user.isnumeric():
+                        if int(user) == dict(el)['member_1']:
+                            text += " 🔖"
+                    else:
+                        if user == dict(el)['username_1']:
+                            text += " 🔖"
+
             text += "\n\t🔸 <u>Recipient</u> – "
             if recipient is not None and (recipient.status.name != "LEFT" and recipient.status.name != "BANNED"):
                 text += f"{recipient.user.mention} (<code>{dict(el)['member_2']}</code>)"
             else:
                 text += f"<code>{dict(el)['member_2']}</code>"
-            if recipient is not None and tagged.user.id == recipient.user.id:
-                text += " 🔖"
+            if tagged is not None:
+                if recipient is not None:
+                    if tagged.user.id == recipient.user.id:
+                        text += " 🔖"
+                else:
+                    if tagged.user.id == dict(el)['member_1']:
+                        text += " 🔖"
+            else:
+                if recipient is not None:
+                    if user.isnumeric():
+                        if int(user) == recipient.user.id:
+                            text += " 🔖"
+                    else:
+                        if recipient.user.username is not None:
+                            if user == recipient.user.username:
+                                text += " 🔖"
+                        elif user == dict(el)['username_1']:
+                            text += " 🔖"
+                else:
+                    if user.isnumeric():
+                        if int(user) == dict(el)['member_1']:
+                            text += " 🔖"
+                    else:
+                        if user == dict(el)['username_1']:
+                            text += " 🔖"
             text += f"\n\t🔹 <u>Feedback</u> – <i>{dict(el)['feedback']}</i>"
             text += f"\n\t🔸 <u>Screenshot</u> – 🔗 <a href=\"{dict(el)['screenshot']}\">Link</a>"
             text += f"\n\t🔹 <u>Exchange Time</u> – {dict(el)['exchange_time'].strftime('%a %d %b %Y, %H:%M')}"
             text += f"\n\t🔸 <u>Cancelled</u> – <code>{dict(el)['cancelled']}</code>\n"
         else:
-            await send_message_with_close_button(
-                client=client,
-                message=message,
-                text=text + "\n\n🆘 Usa il tuo bot di moderazione per maggiori informazioni sugli utenti citati."
-            )
             text = f"\n🧩. <b>Scambio {dict(el)['id']}</b>\n\n\t🔹 <u>Sender</u> – "
-            if sender.status.name != "LEFT" and sender.status.name != "BANNED":
+            if sender is not None and (sender.status.name != "LEFT" and sender.status.name != "BANNED"):
                 text += f"{sender.user.mention} (<code>{dict(el)['member_1']}</code>)"
             else:
                 text += f"<code>{dict(el)['member_1']}</code>"
-            if tagged.user.id == sender.user.id:
-                text += " 🔖"
+            if tagged is not None:
+                if sender is not None:
+                    if tagged.user.id == sender.user.id:
+                        text += " 🔖"
+                else:
+                    if tagged.user.id == dict(el)['member_1']:
+                        text += " 🔖"
+            else:
+                if sender is not None:
+                    if user.isnumeric():
+                        if user == sender.user.id:
+                            text += " 🔖"
+                    else:
+                        if sender.user.username is not None:
+                            if user == sender.user.username:
+                                text += " 🔖"
+                        elif user == dict(el)['username_1']:
+                            text += " 🔖"
+                else:
+                    if user.isnumeric():
+                        if user == dict(el)['member_1']:
+                            text += " 🔖"
+                    else:
+                        if user == dict(el)['username_1']:
+                            text += " 🔖"
+
             text += "\n\t🔸 <u>Recipient</u> – "
-            if recipient.status.name != "LEFT" and recipient.status.name != "BANNED":
+            if recipient is not None and (recipient.status.name != "LEFT" and recipient.status.name != "BANNED"):
                 text += f"{recipient.user.mention} (<code>{dict(el)['member_2']}</code>)"
             else:
                 text += f"<code>{dict(el)['member_2']}</code>"
-            if tagged.user.id == recipient.user.id:
-                text += " 🔖"
+            if tagged is not None:
+                if recipient is not None:
+                    if tagged.user.id == recipient.user.id:
+                        text += " 🔖"
+                else:
+                    if tagged.user.id == dict(el)['member_1']:
+                        text += " 🔖"
+            else:
+                if recipient is not None:
+                    if user.isnumeric():
+                        if user == recipient.user.id:
+                            text += " 🔖"
+                    else:
+                        if recipient.user.username is not None:
+                            if user == recipient.user.username:
+                                text += " 🔖"
+                        elif user == dict(el)['username_1']:
+                            text += " 🔖"
+                else:
+                    if user.isnumeric():
+                        if user == dict(el)['member_1']:
+                            text += " 🔖"
+                    else:
+                        if user == dict(el)['username_1']:
+                            text += " 🔖"
             text += f"\n\t🔹 <u>Feedback</u> – <i>{dict(el)['feedback']}</i>"
             text += f"\n\t🔸 <u>Screenshot</u> – 🔗 <a href=\"{dict(el)['screenshot']}\">Link</a>"
             text += f"\n\t🔹 <u>Exchange Time</u> – {dict(el)['exchange_time'].strftime('%a %d %b %Y, %H:%M')}"
