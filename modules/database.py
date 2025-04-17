@@ -94,7 +94,9 @@ async def decrease_user_points(user_id: int | str, points=1):
     conn = await connect_to_database()
     try:
         points = await conn.fetchval(
-            query=f"UPDATE main_table SET points = CASE WHEN points = 0 THEN 5 ELSE points - 1 END "
+            query=f"UPDATE main_table "
+                  f"SET points = CASE WHEN points = 0 THEN 5 ELSE points - 1 END, "
+                  f"SET total = total - 1, "
                   f"WHERE user_id = {user_id} RETURNING points;",
         )
         return points

@@ -476,12 +476,11 @@ async def user_exchanges(client: Client, message: Message):
             text += f"\n\t🔹 <u>Exchange Time</u> – {dict(el)['exchange_time'].strftime('%a %d %b %Y, %H:%M')}"
             text += f"\n\t🔸 <u>Cancelled</u> – <code>{dict(el)['cancelled']}</code>\n"
 
-    if len(res) % 5 != 0:
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
-        )
+    await send_message_with_close_button(
+        client=client,
+        message=message,
+        text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
+    )
 
 
 async def user_points(client: Client, message: Message):
