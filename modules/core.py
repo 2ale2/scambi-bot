@@ -5,13 +5,13 @@ import locale
 from pyrogram import Client
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from pyrogram.errors import RPCError, UsernameNotOccupied, PeerIdInvalid, UserNotParticipant
+from pyrogram.errors import RPCError, UsernameNotOccupied
 from globals import bot_data
 from datetime import datetime
 import pytz
 
 from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled, \
-    get_user_exchanges
+    get_user_exchanges, get_user_points
 from modules.loggers import db_logger, bot_logger
 from modules.utils import save_persistence
 
@@ -138,6 +138,8 @@ async def exchange(client: Client, message: Message):
         content={
             "member_1": sender.id,
             "member_2": recipient.user.id,
+            "username_1": sender.username,
+            "username_2": recipient.user.username,
             "feedback": feedback,
             "screenshot": forwarded.link,
             "exchange_time": datetime.now(tz=pytz.timezone("Europe/Rome")).replace(tzinfo=None)
@@ -307,7 +309,8 @@ async def user_exchanges(client: Client, message: Message):
     except Exception:
         tagged = None
 
-    res = await get_user_exchanges(str(tagged.user.id) if tagged is not None else str(user))
+    res = await get_user_exchanges(str(tagged.user.id) if tagged is not None else str(user).removeprefix('@'))
+
     if res == -1:
         await send_message_with_close_button(
             client=client,
@@ -479,6 +482,85 @@ async def user_exchanges(client: Client, message: Message):
             message=message,
             text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
         )
+
+
+async def user_points(client: Client, message: Message):
+    if not await is_admin(message.from_user.id):
+        return
+
+    if len(message.command) <= 1:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ Devi specificare un utente.\n\n"
+                 f"<b>Esempio</b>:\n\t<code>/scambi @username</code>\n\t<code>/scambi 7654321</code>"
+        )
+        return
+
+    user = message.command[1]
+
+    try:
+        tagged = await client.get_chat_member(
+            chat_id=os.getenv("GROUP_ID"),
+            user_id=int(user) if user.isnumeric() else str(user)
+        )
+    except KeyError as e:
+        bot_logger.error(f"error retrieving user {user} from group: {e}")
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=f"⚠️ Non ho potuto trovare l'utente <code>{user}</code>. Riprova."
+        )
+        return
+    except Exception:
+        tagged = None
+
+    if tagged is not None:
+        res = await get_user_points(str(tagged.user.id))
+    else:
+        res = await get_user_points(str(user).removeprefix('@'))
+
+    if len(res) == 0:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ <b>Non ho trovato l'utente nel database</b>.\n\n"
+                 "🆘 Se hai usato uno username, prova col relativo user ID."
+        )
+        return
+
+    res = res[0]
+
+    text = "🎯 Punti utente "
+
+    if tagged is not None:
+        if (username := tagged.user.username) or (username := dict(res)['username']):
+            text += (f"@{username} (<code>{tagged.user.id}</code>): "
+                     f"<b>{dict(res)['points']}</b> (🎰 Totale: <b>{dict(res)['total']}</b>)")
+        else:
+            text += (f"<code>{tagged.user.id}</code>: "
+                     f"<b>{dict(res)['points']}</b> (🎰 Totale: <b>{dict(res)['total']}</b>)"
+                     f"\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati.")
+    else:
+        if user.isnumeric():
+            if (username := dict(res)['username']) is not None:
+                text += (f"@{username} (<code>{user}</code>): <b>{dict(res)['points']}</b> "
+                         f"(🎰 Totale: <b>{dict(res)['total']}</b>)\n\n"
+                         f"🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati.")
+            else:
+                text += (f"<code>{user}</code>: <b>{dict(res)['points']}</b> "
+                         f"(🎰 Totale: <b>{dict(res)['total']}</b>)\n\n"
+                         f"🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati.")
+        else:
+            text += (f"{user}: <b>{dict(res)['points']}</b> "
+                     f"(🎰 Totale: <b>{dict(res)['total']}</b>)\n\n"
+                     f"🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati.")
+
+    await send_message_with_close_button(
+        client=client,
+        message=message,
+        text=text
+    )
 
 
 async def is_admin(user_id: int | str) -> bool:

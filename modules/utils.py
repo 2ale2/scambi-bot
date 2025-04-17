@@ -66,7 +66,7 @@ async def add_handlers(app: Client):
 
     app.add_handler(
         MessageHandler(
-            callback=core.user_exchanges,
+            callback=core.user_points,
             filters=filters.command(
                 commands="punti",
                 prefixes=list(".!/")

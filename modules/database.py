@@ -72,6 +72,7 @@ async def add_to_table(table_name: str, content: dict):
             query += (
                 f"ON CONFLICT (user_id) DO UPDATE SET "
                 f"points = CASE WHEN {table_name}.points + 1 >= 6 THEN 0 ELSE {table_name}.points + 1 END, "
+                f"total = {table_name}.total + 1,"
                 f"username = EXCLUDED.username "
                 f"RETURNING points"
             )
@@ -112,6 +113,23 @@ async def get_user_exchanges(user: int | str):
     else:
         user=str(user)
         query = f"SELECT * FROM exchanges WHERE username_1 = $1 OR username_2 = $1"
+    try:
+        res = await conn.fetch(query, user)
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        return -1
+    else:
+        return res
+
+
+async def get_user_points(user: int | str):
+    conn = await connect_to_database()
+    if user.isnumeric():
+        user = int(user)
+        query = f"SELECT * FROM main_table WHERE user_id = $1"
+    else:
+        user = str(user)
+        query = f"SELECT * FROM main_table WHERE username = $1"
     try:
         res = await conn.fetch(query, user)
     except asyncpg.exceptions.PostgresError as err:
