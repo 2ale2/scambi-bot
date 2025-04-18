@@ -2,7 +2,9 @@ import asyncpg
 import os
 
 from pyrogram import Client, filters
-from pyrogram.handlers import MessageHandler, CallbackQueryHandler
+from pyrogram.handlers import MessageHandler, CallbackQueryHandler, ChatMemberUpdatedHandler
+from pyrogram.types import Message, ChatMemberUpdated
+
 from loggers import db_logger
 from globals import bot_data
 import core
@@ -72,6 +74,30 @@ async def add_handlers(app: Client):
                 prefixes=list(".!/")
             )
         )
+    )
+
+    app.add_handler(
+        ChatMemberUpdatedHandler(
+            callback=core.intercept_user_join,
+            filters=filters.command(
+                commands="scambi_admin",
+            )
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.user_points,
+            filters=filters.chat(os.getenv("GROUP_ID"))
+        ),
+        group=-1
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.confirm_exchange,
+            filters=filters.regex(r"^cancel_admin.*")
+        ),
     )
 
 

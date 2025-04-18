@@ -3,17 +3,42 @@ import os
 import re
 import locale
 from pyrogram import Client
-from pyrogram.enums import ParseMode
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from pyrogram.errors import RPCError, UsernameNotOccupied
+from pyrogram.enums import ParseMode, ChatMemberStatus
+from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
+from pyrogram.errors import RPCError
 from globals import bot_data
 from datetime import datetime
 import pytz
 
 from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled, \
-    get_user_exchanges, get_user_points
+    get_user_exchanges, get_user_points, retrieve_user
 from modules.loggers import db_logger, bot_logger
 from modules.utils import save_persistence
+
+
+async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
+    if (chat_member.new_chat_member and
+            not (chat_member.new_chat_member.status == ChatMemberStatus.LEFT or
+                 chat_member.new_chat_member.status == ChatMemberStatus.BANNED)
+    ) and chat_member.new_chat_member.user.username is not None:
+        await add_to_table(
+            table_name="users",
+            content={
+                "user_id": chat_member.new_chat_member.user.id,
+                "username": chat_member.new_chat_member.user.username
+            }
+        )
+
+
+async def intercept_user_message(client: Client, message: Message):
+    if message.from_user.username is not None:
+        await add_to_table(
+            table_name="users",
+            content={
+                "user_id": message.from_user.id,
+                "username": message.from_user.username
+            }
+        )
 
 
 async def start(client: Client, message: Message):
@@ -70,18 +95,29 @@ async def exchange(client: Client, message: Message):
             chat_id=message.chat.id,
             user_id=user
         )
-    except ValueError:
+    except Exception:
+        if not user.isnumeric():
+            recipient = await retrieve_user(user)
+            if not recipient:
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🖋 Conferma Scambio", callback_data=f"confirm_exchange_{user}")
+                    ],
+                    [
+                        InlineKeyboardButton("🖍 Annulla Scambio", callback_data="close_admin")
+                    ]
+                ]
+                await message.reply_text(
+                    text=f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo scambio <u>necessita di conferma</u> da parte dell'utente "
+                         f"{user}.",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                # aggiungere il messaggio di feed a bot_data per l'eliminazione
+                return
         await send_message_with_close_button(
             client=client,
             message=message,
-            text="⚠️ Warning\n\n▪️ L'utente sembra non esistere."
-        )
-        return
-    except UsernameNotOccupied:
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text="⚠️ Warning\n\n▪️ L'utente potrebbe aver cambiare username."
+            text="⚠️ Warning\n\n▪️ L'utente non è stato trovato nel gruppo."
         )
         return
 
@@ -200,6 +236,13 @@ async def exchange(client: Client, message: Message):
     await message.delete()
 
 
+async def confirm_exchange(client: Client, callback_query: CallbackQuery):
+    if (callback_query.from_user.username is None or
+            callback_query.from_user.username != callback_query.data.split("_")[-1]):
+        return
+    # registrare lo scambio
+
+
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):
     if not await is_admin(callback_query.from_user.id):
         return
@@ -248,7 +291,10 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
     await callback_query.message.delete()
 
 
-async def send_message_with_close_button(client: Client, message: Message | None, text: str, chat_id=None):
+async def send_message_with_close_button(client: Client,
+                                         message: Message | None,
+                                         text: str,
+                                         chat_id=None):
     if message is None and chat_id is None:
         bot_logger.error("almeno uno tra 'message' e 'chat_id' deve essere definito")
         raise RPCError("almeno uno tra 'message' e 'chat_id' deve essere definito")
@@ -569,4 +615,8 @@ async def is_admin(user_id: int | str) -> bool:
 # serve per evitare eccezioni
 # noinspection PyUnusedLocal
 async def close_message(client: Client, callback_query: CallbackQuery):
-    await callback_query.message.delete()
+    if not callback_query.data.startswith("close_admin"):
+        await callback_query.message.delete()
+    else:
+        if await is_admin(callback_query.from_user.id):
+            await callback_query.message.delete()

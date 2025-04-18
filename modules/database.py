@@ -1,8 +1,17 @@
 import asyncpg
 import json
+import re
 
 from modules.utils import connect_to_database
 from loggers import db_logger, bot_logger
+
+
+async def is_username_valid(username: str):
+    if not username:
+        return False
+
+    pattern = r"^@[a-z][a-z0-9_]{5,}$"
+    return bool(re.match(pattern, username))
 
 
 async def is_table_empty():
@@ -76,8 +85,13 @@ async def add_to_table(table_name: str, content: dict):
                 f"username = EXCLUDED.username "
                 f"RETURNING points"
             )
-        else:
+        elif table_name == "exchanges":
             query += "RETURNING id"
+
+        elif table_name == "users":
+            if not await is_username_valid(content['username']):
+                db_logger.error(f"Username non valido: {content['username']}")
+            query += f"ON CONFLICT (user_id) DO UPDATE SET username = {content['username']} RETURNING user_id"
 
         result = await conn.fetchval(query, *values)
         return result
@@ -88,6 +102,21 @@ async def add_to_table(table_name: str, content: dict):
         raise
     finally:
         await conn.close()
+
+
+async def retrieve_user(username: str):
+    conn = await connect_to_database()
+    try:
+        res = await conn.fetch(
+            "SELECT user_id FROM users WHERE username = $1;",
+            username
+        )
+        if len(res) == 0:
+            return False
+        return res
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        return False
 
 
 async def decrease_user_points(user_id: int | str, points=1):
