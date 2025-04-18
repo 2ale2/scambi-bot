@@ -21,24 +21,28 @@ async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
             not (chat_member.new_chat_member.status == ChatMemberStatus.LEFT or
                  chat_member.new_chat_member.status == ChatMemberStatus.BANNED)
     ) and chat_member.new_chat_member.user.username is not None:
-        await add_to_table(
+        res = await add_to_table(
             table_name="users",
             content={
                 "user_id": chat_member.new_chat_member.user.id,
                 "username": chat_member.new_chat_member.user.username
             }
         )
+        if res is None:
+            db_logger.error(f"error adding user {chat_member.from_user.id} to table")
 
 
 async def intercept_user_message(client: Client, message: Message):
     if message.from_user.username is not None:
-        await add_to_table(
+        res = await add_to_table(
             table_name="users",
             content={
                 "user_id": message.from_user.id,
                 "username": message.from_user.username
             }
         )
+        if res is None:
+            db_logger.error(f"error adding user {message.from_user.id} to table")
 
 
 async def start(client: Client, message: Message):
@@ -62,9 +66,33 @@ async def start(client: Client, message: Message):
     )
 
 
+async def send_confirmation_request(message: Message, user: str):
+    global bot_data
+    sender = message.from_user.id
+    keyboard = [
+        [
+            InlineKeyboardButton("🖋 Conferma Scambio", callback_data=f"confirm_exchange_{sender}_{user}")
+        ],
+        [
+            InlineKeyboardButton("🖍 Annulla Scambio", callback_data="close_admin")
+        ]
+    ]
+    try:
+        await message.reply_text(
+            text=f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo scambio <u>necessita di conferma</u> da parte dell'utente "
+                 f"{user}.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        bot_logger.error(f"error sending confirmation request: {e}")
+        return
+    bot_data["confirmations"][user] = message
+    await save_persistence(json.dumps({"jsondata": bot_data}))
+    return
+
+
 async def exchange(client: Client, message: Message):
     global bot_data
-    forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
 
     sender = message.from_user
 
@@ -99,27 +127,26 @@ async def exchange(client: Client, message: Message):
         if not user.isnumeric():
             recipient = await retrieve_user(user)
             if not recipient:
-                keyboard = [
-                    [
-                        InlineKeyboardButton("🖋 Conferma Scambio", callback_data=f"confirm_exchange_{user}")
-                    ],
-                    [
-                        InlineKeyboardButton("🖍 Annulla Scambio", callback_data="close_admin")
-                    ]
-                ]
-                await message.reply_text(
-                    text=f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo scambio <u>necessita di conferma</u> da parte dell'utente "
-                         f"{user}.",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
-                # aggiungere il messaggio di feed a bot_data per l'eliminazione
+                await send_confirmation_request(message=message, user=user)
                 return
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text="⚠️ Warning\n\n▪️ L'utente non è stato trovato nel gruppo."
-        )
-        return
+            else:
+                try:
+                    recipient = await client.get_chat_member(
+                        chat_id=os.getenv("GROUP_ID"),
+                        user_id=dict(recipient[0])["user_id"]
+                    )
+                except Exception:
+                    await send_confirmation_request(message=message, user=user)
+                    return
+        else:
+            await send_message_with_close_button(
+                client=client,
+                message=message,
+                text="⚠️ Warning\n\n▪️ L'utente non è stato trovato nel gruppo."
+            )
+            return
+
+    forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
 
     if recipient.user.id == sender.id:
         await send_message_with_close_button(
@@ -240,7 +267,103 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
     if (callback_query.from_user.username is None or
             callback_query.from_user.username != callback_query.data.split("_")[-1]):
         return
-    # registrare lo scambio
+    message = bot_data["confirmations"][callback_query.from_user.username]
+    forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
+    sender = message.from_user
+    recipient = callback_query.from_user
+
+    await callback_query.message.delete()
+
+    pattern = r"[/.!](\w+)(?:\s+(@\w+|(\d{7,})|<a\s+href=\"tg://user\?id=(\d{7,})\">.*?</a>))?\s*(.*)?"
+
+    match = re.match(pattern, message.caption)
+
+    # ho già controllare se feedback è None (non lo è)
+
+    feedback = match.group(5)
+
+    points_sender = await add_to_table(
+        table_name="main_table",
+        content={
+            "user_id": sender.id,
+            "username": sender.username
+        }
+    )
+
+    points_recipient = await add_to_table(
+        table_name="main_table",
+        content={
+            "user_id": recipient.id,
+            "username": recipient.username
+        }
+    )
+
+    added_id = await add_to_table(
+        table_name="exchanges",
+        content={
+            "member_1": sender.id,
+            "member_2": recipient.id,
+            "username_1": sender.username,
+            "username_2": recipient.username,
+            "feedback": feedback,
+            "screenshot": forwarded.link,
+            "exchange_time": datetime.now(tz=pytz.timezone("Europe/Rome")).replace(tzinfo=None)
+        }
+    )
+
+    if points_sender is not None and points_recipient is not None and added_id is not None:
+        db_logger.info(msg=f"Wrote Database Correctly (id #{added_id}).")
+
+    if points_sender == 0:
+        if added_id not in bot_data:
+            bot_data[int(added_id)] = {}
+        sent_message = await send_message_with_close_button(
+            client=client,
+            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            message=message,
+            text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
+        )
+        bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
+        await save_persistence(json.dumps({"jsondata": bot_data}))
+
+    if points_recipient == 0:
+        if added_id not in bot_data:
+            bot_data[int(added_id)] = {}
+        sent_message = await send_message_with_close_button(
+            client=client,
+            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            message=message,
+            text=f"🎯 L'utente {recipient.mention} ha ottenuto 6 punti."
+        )
+        bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
+        await save_persistence(json.dumps({"jsondata": bot_data}))
+
+    text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
+    if points_sender == 0:
+        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → 6 (+1)\n"
+    else:
+        text += f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender} (+1)\n"
+
+    if points_recipient == 0:
+        text += f"🎁 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → 6 (+1)\n"
+    else:
+        text += f"🔹 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {points_recipient} (+1)\n"
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"cancel_exchange_{added_id}")
+        ]
+    ]
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+    del bot_data["confirmations"][callback_query.from_user.username]
+    await message.delete()
 
 
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):

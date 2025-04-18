@@ -95,7 +95,7 @@ async def add_handlers(app: Client):
 
     app.add_handler(
         CallbackQueryHandler(
-            callback=core.confirm_exchange,
+            callback=core.close_message,
             filters=filters.regex(r"^cancel_admin.*")
         ),
     )

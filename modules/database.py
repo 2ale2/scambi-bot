@@ -91,6 +91,7 @@ async def add_to_table(table_name: str, content: dict):
         elif table_name == "users":
             if not await is_username_valid(content['username']):
                 db_logger.error(f"Username non valido: {content['username']}")
+                return None
             query += f"ON CONFLICT (user_id) DO UPDATE SET username = {content['username']} RETURNING user_id"
 
         result = await conn.fetchval(query, *values)
