@@ -146,8 +146,6 @@ async def exchange(client: Client, message: Message):
             await send_confirmation_request(message=message, user=user)
             return
 
-    forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
-
     if recipient.user.id == sender.id:
         await message.delete()
         await send_message_with_close_button(
@@ -183,6 +181,8 @@ async def exchange(client: Client, message: Message):
             text="⚠️ <b>Warning</b>\n\n▪️ Hai taggato un bot."
         )
         return
+
+    forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
 
     points_sender = await add_to_table(
         table_name="main_table",
@@ -254,6 +254,9 @@ async def exchange(client: Client, message: Message):
     keyboard = [
         [
             InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"cancel_exchange_{added_id}")
+        ],
+        [
+            InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
         ]
     ]
 
@@ -768,5 +771,8 @@ async def close_message(client: Client, callback_query: CallbackQuery):
             if user in bot_data["confirmations"]:
                 del bot_data["confirmations"][user]
         await callback_query.message.delete()
+    elif callback_query.data.startswith("confirm_and_close"):
+        if await is_admin(callback_query.from_user.id):
+            await callback_query.message.delete()
     else:
         await callback_query.message.delete()

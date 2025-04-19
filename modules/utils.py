@@ -113,6 +113,13 @@ async def add_handlers(app: Client):
         ),
     )
 
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.close_message,
+            filters=filters.regex(r"^confirm_and_close.*")
+        )
+    )
+
 
 async def connect_to_database():
     try:
