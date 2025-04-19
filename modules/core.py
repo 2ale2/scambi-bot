@@ -55,7 +55,8 @@ async def start(client: Client, message: Message):
             f"🔹 Ecco una lista dei comandi:\n\n"
             f"\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato.\n"
             f"\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
-            f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>")
+            f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>\n\n"
+            f"<i>made by @Mera86 e @prof_layton</i>")
 
     await send_message_with_close_button(
         client=client,
