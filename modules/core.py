@@ -98,6 +98,7 @@ async def exchange(client: Client, message: Message):
     sender = message.from_user
 
     if message.caption is None:
+        await message.delete()
         text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
         await send_message_with_close_button(client=client, message=message, text=text)
         return
@@ -108,6 +109,7 @@ async def exchange(client: Client, message: Message):
 
     _, mentioned = match.group(1), (match.group(2) or None)
     if mentioned is None:
+        await message.delete()
         text = "⚠️ Indica l'<b>utente</b> con cui hai effettuato lo scambio."
         await send_message_with_close_button(client=client, message=message, text=text)
         return
@@ -115,6 +117,7 @@ async def exchange(client: Client, message: Message):
     user = match.group(3) or match.group(4) or match.group(2)
     feedback = match.group(5) or None
     if feedback is None:
+        await message.delete()
         text = "⚠️ Aggiungi un <b>feedback</b> per assegnare lo scambio."
         await send_message_with_close_button(client=client, message=message, text=text)
         return
@@ -146,34 +149,38 @@ async def exchange(client: Client, message: Message):
     forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
 
     if recipient.user.id == sender.id:
+        await message.delete()
         await send_message_with_close_button(
             client=client,
             message=message,
-            text="⚠️ Warning\n\n▪️ Tagga l'altro membro con cui hai effettuato lo scambio."
+            text="⚠️ <b>Warning</b>\n\n▪️ Tagga l'altro membro con cui hai effettuato lo scambio."
         )
         return
 
     if recipient.status == "LEFT":
+        await message.delete()
         await send_message_with_close_button(
             client=client,
             message=message,
-            text="⚠️ Warning\n\n▪️ L'utente non è nel gruppo."
+            text="⚠️ <b>Warning</b>\n\n▪️ L'utente non è nel gruppo."
         )
         return
 
     if recipient.status == "BANNED":
+        await message.delete()
         await send_message_with_close_button(
             client=client,
             message=message,
-            text="⚠️ Warning\n\n▪️ Non puoi assegnare punti a utenti bannati."
+            text="⚠️ <b>Warning</b>\n\n▪️ Non puoi assegnare punti a utenti bannati."
         )
         return
 
     if recipient.user.is_bot:
+        await message.delete()
         await send_message_with_close_button(
             client=client,
             message=message,
-            text="⚠️ Warning\n\n▪️ Hai taggato un bot."
+            text="⚠️ <b>Warning</b>\n\n▪️ Hai taggato un bot."
         )
         return
 
@@ -754,11 +761,12 @@ async def is_admin(user_id: int | str) -> bool:
 # noinspection PyUnusedLocal
 async def close_message(client: Client, callback_query: CallbackQuery):
     global bot_data
-    if not callback_query.data.startswith("close_admin"):
+    if callback_query.data.startswith("close_admin"):
+        if not await is_admin(callback_query.from_user.id):
+            return
         if user := (callback_query.data.split("_", maxsplit=3)[-1]):
             if user in bot_data["confirmations"]:
                 del bot_data["confirmations"][user]
         await callback_query.message.delete()
     else:
-        if await is_admin(callback_query.from_user.id):
-            await callback_query.message.delete()
+        await callback_query.message.delete()
