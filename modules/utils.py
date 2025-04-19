@@ -1,3 +1,6 @@
+import copy
+import json
+
 import asyncpg
 import os
 
@@ -10,7 +13,10 @@ from globals import bot_data
 import core
 
 
-async def save_persistence(json_content: str):
+async def save_persistence(json_dict: dict):
+    if "confirmations" not in json_dict:
+        del json_dict["confirmations"]
+    json_content = json.dumps({"jsondata": json_dict})
     conn = await connect_to_database()
     try:
         # noinspection SqlWithoutWhere
@@ -97,6 +103,13 @@ async def add_handlers(app: Client):
         CallbackQueryHandler(
             callback=core.close_message,
             filters=filters.regex(r"^cancel_admin.*")
+        ),
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.confirm_exchange,
+            filters=filters.regex(r"^confirm_exchange.*")
         ),
     )
 

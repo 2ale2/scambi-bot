@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -71,10 +72,11 @@ async def send_confirmation_request(message: Message, user: str):
     sender = message.from_user.id
     keyboard = [
         [
-            InlineKeyboardButton("🖋 Conferma Scambio", callback_data=f"confirm_exchange_{sender}_{user}")
+            InlineKeyboardButton("🖋 Conferma Scambio",
+                                 callback_data=f"confirm_exchange_{sender}_{user.replace('@', '')}")
         ],
         [
-            InlineKeyboardButton("🖍 Annulla Scambio", callback_data="close_admin")
+            InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"close_admin_{user.replace('@', '')}")
         ]
     ]
     try:
@@ -86,8 +88,9 @@ async def send_confirmation_request(message: Message, user: str):
     except Exception as e:
         bot_logger.error(f"error sending confirmation request: {e}")
         return
-    bot_data["confirmations"][user] = message
-    await save_persistence(json.dumps({"jsondata": bot_data}))
+    if "confirmations" not in bot_data:
+        bot_data["confirmations"] = {}
+    bot_data["confirmations"][user.replace("@", "")] = message
     return
 
 
@@ -119,10 +122,11 @@ async def exchange(client: Client, message: Message):
         return
 
     try:
-        recipient = await client.get_chat_member(
-            chat_id=message.chat.id,
-            user_id=user
-        )
+        raise Exception
+        # recipient = await client.get_chat_member(
+        #     chat_id=message.chat.id,
+        #     user_id=user
+        # )
     except Exception:
         if not user.isnumeric():
             recipient = await retrieve_user(user)
@@ -139,11 +143,7 @@ async def exchange(client: Client, message: Message):
                     await send_confirmation_request(message=message, user=user)
                     return
         else:
-            await send_message_with_close_button(
-                client=client,
-                message=message,
-                text="⚠️ Warning\n\n▪️ L'utente non è stato trovato nel gruppo."
-            )
+            await send_confirmation_request(message=message, user=user)
             return
 
     forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
@@ -222,7 +222,7 @@ async def exchange(client: Client, message: Message):
             text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
         )
         bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
-        await save_persistence(json.dumps({"jsondata": bot_data}))
+        await save_persistence(bot_data)
 
     if points_recipient == 0:
         if added_id not in bot_data:
@@ -234,7 +234,7 @@ async def exchange(client: Client, message: Message):
             text=f"🎯 L'utente {recipient.user.mention} ha ottenuto 6 punti."
         )
         bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
-        await save_persistence(json.dumps({"jsondata": bot_data}))
+        await save_persistence(bot_data)
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
@@ -265,12 +265,30 @@ async def exchange(client: Client, message: Message):
 
 async def confirm_exchange(client: Client, callback_query: CallbackQuery):
     if (callback_query.from_user.username is None or
-            callback_query.from_user.username != callback_query.data.split("_")[-1]):
+            callback_query.from_user.username != callback_query.data.split("_", maxsplit=3)[-1]):
         return
-    message = bot_data["confirmations"][callback_query.from_user.username]
+    message = None
+    for el in bot_data["confirmations"]:
+        message = bot_data["confirmations"][el]
+        if message.from_user.id == int(callback_query.data.split("_", maxsplit=3)[-2]):
+            break
+        message = None
+
+    if message is None:
+        bot_data.error(msg="confirm_exchange: message not found")
+        return
+    message = bot_data["confirmations"][callback_query.data.split("_", maxsplit=3)[-1]]
     forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
     sender = message.from_user
     recipient = callback_query.from_user
+
+    await add_to_table(
+        table_name="user",
+        content={
+            "user_id": recipient.id,
+            "username": recipient.username
+        }
+    )
 
     await callback_query.message.delete()
 
@@ -324,7 +342,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
         )
         bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
-        await save_persistence(json.dumps({"jsondata": bot_data}))
+        await save_persistence(bot_data)
 
     if points_recipient == 0:
         if added_id not in bot_data:
@@ -336,7 +354,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             text=f"🎯 L'utente {recipient.mention} ha ottenuto 6 punti."
         )
         bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
-        await save_persistence(json.dumps({"jsondata": bot_data}))
+        await save_persistence(bot_data)
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
@@ -362,7 +380,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    del bot_data["confirmations"][callback_query.from_user.username]
+    del bot_data["confirmations"]['Mera86']
     await message.delete()
 
 
@@ -738,7 +756,10 @@ async def is_admin(user_id: int | str) -> bool:
 # serve per evitare eccezioni
 # noinspection PyUnusedLocal
 async def close_message(client: Client, callback_query: CallbackQuery):
+    global bot_data
     if not callback_query.data.startswith("close_admin"):
+        if user := (callback_query.data.split("_", maxsplit=3)[-1]):
+            del bot_data["confirmations"][user]
         await callback_query.message.delete()
     else:
         if await is_admin(callback_query.from_user.id):

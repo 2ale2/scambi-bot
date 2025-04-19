@@ -40,7 +40,7 @@ async def post_init(app: Client):
                 if (el_id := os.getenv(el.upper())) is not None:
                     bot_data[el] = int(el_id)
 
-            await save_persistence(json.dumps({"jsondata": bot_data}))
+            await save_persistence(bot_data)
     else:
         res = await conn.fetch("SELECT data FROM persistence;")
         data = json.loads(next(res[0].values()))["jsondata"]
