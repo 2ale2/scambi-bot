@@ -756,7 +756,8 @@ async def close_message(client: Client, callback_query: CallbackQuery):
     global bot_data
     if not callback_query.data.startswith("close_admin"):
         if user := (callback_query.data.split("_", maxsplit=3)[-1]):
-            del bot_data["confirmations"][user]
+            if user in bot_data["confirmations"]:
+                del bot_data["confirmations"][user]
         await callback_query.message.delete()
     else:
         if await is_admin(callback_query.from_user.id):
