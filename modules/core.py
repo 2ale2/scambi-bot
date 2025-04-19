@@ -1,5 +1,3 @@
-import copy
-import json
 import os
 import re
 import locale
@@ -122,11 +120,10 @@ async def exchange(client: Client, message: Message):
         return
 
     try:
-        raise Exception
-        # recipient = await client.get_chat_member(
-        #     chat_id=message.chat.id,
-        #     user_id=user
-        # )
+        recipient = await client.get_chat_member(
+            chat_id=message.chat.id,
+            user_id=user
+        )
     except Exception:
         if not user.isnumeric():
             recipient = await retrieve_user(user)
