@@ -16,9 +16,12 @@ from modules.utils import save_persistence
 
 
 async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
-    if (chat_member.new_chat_member and
-            not (chat_member.new_chat_member.status == ChatMemberStatus.LEFT or
-                 chat_member.new_chat_member.status == ChatMemberStatus.BANNED)
+    if (
+            chat_member.new_chat_member and
+            not (
+                    chat_member.new_chat_member.status == ChatMemberStatus.LEFT or
+                    chat_member.new_chat_member.status == ChatMemberStatus.BANNED
+            )
     ) and chat_member.new_chat_member.user.username is not None:
         res = await add_to_table(
             table_name="users",
@@ -245,12 +248,14 @@ async def exchange(client: Client, message: Message):
     if points_sender == 0:
         text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → 6 (+1)\n"
     else:
-        text += f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender} (+1)\n"
+        text += (f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender}"
+                 f" (+1)\n")
 
     if points_recipient == 0:
         text += f"🎁 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → 6 (+1)\n"
     else:
-        text += f"🔹 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → {points_recipient} (+1)\n"
+        text += (f"🔹 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → "
+                 f"{points_recipient} (+1)\n")
 
     keyboard = [
         [
@@ -368,12 +373,14 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
     if points_sender == 0:
         text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → 6 (+1)\n"
     else:
-        text += f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender} (+1)\n"
+        text += (f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender}"
+                 f" (+1)\n")
 
     if points_recipient == 0:
         text += f"🎁 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → 6 (+1)\n"
     else:
-        text += f"🔹 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {points_recipient} (+1)\n"
+        text += (f"🔹 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {points_recipient}"
+                 f" (+1)\n")
 
     keyboard = [
         [
@@ -388,7 +395,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    del bot_data["confirmations"]['Mera86']
+    del bot_data["confirmations"][callback_query.from_user.username.replace('@', '')]
     await message.delete()
 
 
@@ -549,7 +556,7 @@ async def user_exchanges(client: Client, message: Message):
                     if tagged.user.id == sender.user.id:
                         text += " 🔖"
                 else:
-                    if tagged.user.id == dict(el)['member_1']:
+                    if tagged.user.id == int(dict(el)['member_1']):
                         text += " 🔖"
             else:
                 if sender is not None:
@@ -560,14 +567,14 @@ async def user_exchanges(client: Client, message: Message):
                         if sender.user.username is not None:
                             if user == sender.user.username:
                                 text += " 🔖"
-                        elif user == dict(el)['username_1']:
+                        elif user == '@' + dict(el)['username_1']:
                             text += " 🔖"
                 else:
                     if user.isnumeric():
-                        if int(user) == dict(el)['member_1']:
+                        if int(user) == int(dict(el)['member_1']):
                             text += " 🔖"
                     else:
-                        if user == dict(el)['username_1']:
+                        if user == '@' + dict(el)['username_1']:
                             text += " 🔖"
 
             text += "\n\t🔸 <u>Recipient</u> – "
@@ -580,7 +587,7 @@ async def user_exchanges(client: Client, message: Message):
                     if tagged.user.id == recipient.user.id:
                         text += " 🔖"
                 else:
-                    if tagged.user.id == dict(el)['member_1']:
+                    if tagged.user.id == int(dict(el)['member_2']):
                         text += " 🔖"
             else:
                 if recipient is not None:
@@ -591,14 +598,14 @@ async def user_exchanges(client: Client, message: Message):
                         if recipient.user.username is not None:
                             if user == recipient.user.username:
                                 text += " 🔖"
-                        elif user == dict(el)['username_1']:
+                        elif user == '@' + dict(el)['username_2']:
                             text += " 🔖"
                 else:
                     if user.isnumeric():
-                        if int(user) == dict(el)['member_1']:
+                        if int(user) == int(dict(el)['member_2']):
                             text += " 🔖"
                     else:
-                        if user == dict(el)['username_1']:
+                        if user == '@' + dict(el)['username_2']:
                             text += " 🔖"
             text += f"\n\t🔹 <u>Feedback</u> – <i>{dict(el)['feedback']}</i>"
             text += f"\n\t🔸 <u>Screenshot</u> – 🔗 <a href=\"{dict(el)['screenshot']}\">Link</a>"
