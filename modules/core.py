@@ -469,6 +469,7 @@ async def send_message_with_close_button(client: Client,
 
 
 async def user_exchanges(client: Client, message: Message):
+    await message.delete()
     if not await is_admin(message.from_user.id):
         return
 
@@ -521,11 +522,13 @@ async def user_exchanges(client: Client, message: Message):
         )
         return
 
+    user_text = user if not user.isnumeric() else f'<code>{user}</code>'
+
     if len(res) == 0:
         await send_message_with_close_button(
             client=client,
             message=message,
-            text="ℹ️ Sembra che l'utente non abbia fatto alcuno scambio."
+            text=f"ℹ️ Sembra che l'utente {user_text} non abbia fatto alcuno scambio."
         )
         return
 
@@ -545,7 +548,7 @@ async def user_exchanges(client: Client, message: Message):
             )
         except Exception:
             recipient = None
-        if count % 5 != 0:
+        if count % 6 != 0:
             text += f"\n🧩. <b>Scambio {dict(el)['id']}</b>\n\n\t🔹 <u>Sender</u> – "
             if sender is not None and (sender.status.name != "LEFT" and sender.status.name != "BANNED"):
                 text += f"{sender.user.mention} (<code>{dict(el)['member_1']}</code>)"
@@ -612,6 +615,11 @@ async def user_exchanges(client: Client, message: Message):
             text += f"\n\t🔹 <u>Exchange Time</u> – {dict(el)['exchange_time'].strftime('%a %d %b %Y, %H:%M')}"
             text += f"\n\t🔸 <u>Cancelled</u> – <code>{dict(el)['cancelled']}</code>\n"
         else:
+            await send_message_with_close_button(
+                client=client,
+                message=message,
+                text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
+            )
             text = f"\n🧩. <b>Scambio {dict(el)['id']}</b>\n\n\t🔹 <u>Sender</u> – "
             if sender is not None and (sender.status.name != "LEFT" and sender.status.name != "BANNED"):
                 text += f"{sender.user.mention} (<code>{dict(el)['member_1']}</code>)"
@@ -633,14 +641,14 @@ async def user_exchanges(client: Client, message: Message):
                         if sender.user.username is not None:
                             if user == sender.user.username:
                                 text += " 🔖"
-                        elif user == dict(el)['username_1']:
+                        elif user == '@' + dict(el)['username_1']:
                             text += " 🔖"
                 else:
                     if user.isnumeric():
-                        if user == dict(el)['member_1']:
+                        if int(user) == dict(el)['member_1']:
                             text += " 🔖"
                     else:
-                        if user == dict(el)['username_1']:
+                        if user == '@' + dict(el)['username_1']:
                             text += " 🔖"
 
             text += "\n\t🔸 <u>Recipient</u> – "
@@ -653,7 +661,7 @@ async def user_exchanges(client: Client, message: Message):
                     if tagged.user.id == recipient.user.id:
                         text += " 🔖"
                 else:
-                    if tagged.user.id == dict(el)['member_1']:
+                    if tagged.user.id == dict(el)['member_2']:
                         text += " 🔖"
             else:
                 if recipient is not None:
@@ -664,14 +672,14 @@ async def user_exchanges(client: Client, message: Message):
                         if recipient.user.username is not None:
                             if user == recipient.user.username:
                                 text += " 🔖"
-                        elif user == dict(el)['username_1']:
+                        elif user == '@' + dict(el)['username_2']:
                             text += " 🔖"
                 else:
                     if user.isnumeric():
-                        if user == dict(el)['member_1']:
+                        if int(user) == dict(el)['member_2']:
                             text += " 🔖"
                     else:
-                        if user == dict(el)['username_1']:
+                        if user == '@' + dict(el)['username_2']:
                             text += " 🔖"
             text += f"\n\t🔹 <u>Feedback</u> – <i>{dict(el)['feedback']}</i>"
             text += f"\n\t🔸 <u>Screenshot</u> – 🔗 <a href=\"{dict(el)['screenshot']}\">Link</a>"
@@ -686,6 +694,7 @@ async def user_exchanges(client: Client, message: Message):
 
 
 async def user_points(client: Client, message: Message):
+    await message.delete()
     if not await is_admin(message.from_user.id):
         return
 
@@ -694,7 +703,7 @@ async def user_points(client: Client, message: Message):
             client=client,
             message=message,
             text="⚠️ Devi specificare un utente.\n\n"
-                 f"<b>Esempio</b>:\n\t<code>/scambi @username</code>\n\t<code>/scambi 7654321</code>"
+                 f"<b>Esempio</b>:\n\t<code>/punti @username</code>\n\t<code>/punti 7654321</code>"
         )
         return
 
