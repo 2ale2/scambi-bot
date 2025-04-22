@@ -46,6 +46,7 @@ async def post_init(app: Client):
         data = json.loads(next(res[0].values()))["jsondata"]
         for el in ["group_id", "owner_id", "admin_id"]:
             bot_data[el] = int(data[el]) if el in data else int(os.getenv(el.upper()))
+            await save_persistence(bot_data)
 
     await add_handlers(app)
 
