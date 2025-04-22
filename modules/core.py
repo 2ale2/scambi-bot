@@ -49,17 +49,18 @@ async def intercept_user_message(client: Client, message: Message):
 
 async def start(client: Client, message: Message):
     global bot_data
-    if not await is_admin(message.from_user.id):
-        return
-
     await message.delete()
-
-    text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
-            f"🔹 Ecco una lista dei comandi:\n\n"
-            f"\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato.\n"
-            f"\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
-            f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>\n\n"
-            f"<i>made by @Mera86 e @prof_layton</i>")
+    if not await is_admin(message.from_user.id):
+        text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
+                f"🔹 Puoi mandare <code>[.!/]punti</code> per conoscere quanti punti possiedi "
+                f"(<b>funziona anche nel gruppo</b>).")
+    else:
+        text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
+                f"🔹 Ecco una lista dei comandi:\n\n"
+                f"\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato"
+                f".\n\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
+                f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>\n\n"
+                f"<i>made by @Mera86 e @prof_layton</i>")
 
     await send_message_with_close_button(
         client=client,
@@ -696,6 +697,24 @@ async def user_exchanges(client: Client, message: Message):
 async def user_points(client: Client, message: Message):
     await message.delete()
     if not await is_admin(message.from_user.id):
+        res = await get_user_points(message.from_user.id)
+        if len(res) == 0:
+            await send_message_with_close_button(
+                client=client,
+                message=message,
+                text="⚠️ Non ti ho trovato nel database (🎯 <b>0</b> punti)."
+            )
+            return
+
+        res = res[0]
+
+        text = f"🎯 Hai <b>{dict(res)['points']}</b> punti (🎰 Totale: <b>{dict(res)['total']}</b>)."
+
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=text
+        )
         return
 
     if len(message.command) <= 1:
