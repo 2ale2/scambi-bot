@@ -141,7 +141,7 @@ async def exchange(client: Client, message: Message):
             else:
                 try:
                     recipient = await client.get_chat_member(
-                        chat_id=os.getenv("GROUP_ID"),
+                        chat_id=int(os.getenv("GROUP_ID")),
                         user_id=dict(recipient[0])["user_id"]
                     )
                 except Exception:
@@ -187,7 +187,7 @@ async def exchange(client: Client, message: Message):
         )
         return
 
-    forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
+    forwarded = await message.forward(chat_id=int(os.getenv("DEPOSIT_CHAT_ID")))
 
     points_sender = await add_to_table(
         table_name="main_table",
@@ -226,7 +226,7 @@ async def exchange(client: Client, message: Message):
             bot_data[int(added_id)] = {}
         sent_message = await send_message_with_close_button(
             client=client,
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
             text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
         )
@@ -238,7 +238,7 @@ async def exchange(client: Client, message: Message):
             bot_data[int(added_id)] = {}
         sent_message = await send_message_with_close_button(
             client=client,
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
             text=f"🎯 L'utente {recipient.user.mention} ha ottenuto 6 punti."
         )
@@ -292,7 +292,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
         bot_data.error(msg="confirm_exchange: message not found")
         return
     message = bot_data["confirmations"][callback_query.data.split("_", maxsplit=3)[-1]]
-    forwarded = await message.forward(chat_id=os.getenv("DEPOSIT_CHAT_ID"))
+    forwarded = await message.forward(chat_id=int(os.getenv("DEPOSIT_CHAT_ID")))
     sender = message.from_user
     recipient = callback_query.from_user
 
@@ -351,7 +351,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             bot_data[int(added_id)] = {}
         sent_message = await send_message_with_close_button(
             client=client,
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
             text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
         )
@@ -363,7 +363,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             bot_data[int(added_id)] = {}
         sent_message = await send_message_with_close_button(
             client=client,
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
             text=f"🎯 L'utente {recipient.mention} ha ottenuto 6 punti."
         )
@@ -416,12 +416,12 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
 
     if points_sender == 5:
         await client.delete_messages(
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message_ids=bot_data[int(exchange_infos["id"])]["member_1_gift_notification"]
         )
     if points_recipient == 5:
         await client.delete_messages(
-            chat_id=os.getenv("NOTIFICATION_CHAT_ID"),
+            chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message_ids=bot_data[int(exchange_infos["id"])]["member_2_gift_notification"]
         )
 
@@ -499,7 +499,7 @@ async def user_exchanges(client: Client, message: Message):
 
     try:
         tagged = await client.get_chat_member(
-            chat_id=os.getenv("GROUP_ID"),
+            chat_id=int(os.getenv("GROUP_ID")),
             user_id=int(user) if user.isnumeric() else str(user)
         )
     except KeyError as e:
@@ -537,14 +537,14 @@ async def user_exchanges(client: Client, message: Message):
     for count, el in enumerate(res, start=1):
         try:
             sender = await client.get_chat_member(
-                chat_id=os.getenv("GROUP_ID"),
+                chat_id=int(os.getenv("GROUP_ID")),
                 user_id=dict(el)['member_1']
             )
         except Exception:
             sender = None
         try:
             recipient = await client.get_chat_member(
-                chat_id=os.getenv("GROUP_ID"),
+                chat_id=int(os.getenv("GROUP_ID")),
                 user_id=dict(el)['member_2']
             )
         except Exception:
@@ -730,7 +730,7 @@ async def user_points(client: Client, message: Message):
 
     try:
         tagged = await client.get_chat_member(
-            chat_id=os.getenv("GROUP_ID"),
+            chat_id=int(os.getenv("GROUP_ID")),
             user_id=int(user) if user.isnumeric() else str(user)
         )
     except KeyError as e:
