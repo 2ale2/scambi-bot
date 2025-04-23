@@ -706,6 +706,13 @@ async def user_exchanges(client: Client, message: Message):
 async def user_points(client: Client, message: Message):
     await safe_delete(message)
     if not await safety_check(client, message):
+        if message.chat.type == ChatType.PRIVATE:
+            await send_message_with_close_button(
+                client=client,
+                message=message,
+                text="❌ Non sei admin. Puoi usare <code>/punti</code> nel gruppo per conoscere il tuo punteggio."
+            )
+            return
         res = await get_user_points(message.from_user.id)
         if len(res) == 0:
             await send_message_with_close_button(
