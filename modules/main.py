@@ -81,10 +81,9 @@ async def add_handlers(app: Client):
     app.add_handler(
         ChatMemberUpdatedHandler(
             callback=core.intercept_user_join,
-            filters=filters.command(
-                commands="scambi_admin",
-            )
-        )
+            filters=filters.chat(os.getenv("GROUP_ID"))
+        ),
+        group=-1
     )
 
     app.add_handler(
