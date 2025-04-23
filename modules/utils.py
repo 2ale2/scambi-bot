@@ -38,27 +38,7 @@ async def safe_delete(client, message):
 
 async def safety_check(client: Client, message: Message):
     if message.chat.type == ChatType.PRIVATE:
-        if await is_admin(message.from_user.id):
-            return True
-
-        text = ("Un utente non admin ha inviato un messaggio in privato al bot.\n\n"
-                f"User ID: {str(message.from_user.id)}\n")
-        if message.from_user.username is not None:
-            text += f"Username: {message.from_user.username}\n"
-        text += f"First Name: {message.from_user.first_name}\n"
-        text += f"Message: {message.text}"
-        try:
-            sender = await client.get_chat_member(
-                chat_id=os.getenv("GROUP_ID"),
-                user_id=message.from_user.id
-            )
-            if not isinstance(sender, ChatMember):
-                raise Exception
-        except Exception:
-            text += "\nSembra che tale utente non sia nel gruppo ufficiale."
-        finally:
-            bot_logger.warning(text)
-            return False
+        return await is_admin(message.from_user.id)
 
     elif message.chat.id == int(os.getenv("GROUP_ID")):
         return True
