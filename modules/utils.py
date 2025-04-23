@@ -1,14 +1,13 @@
-import copy
 import json
 
 import asyncpg
 import os
 
 from pyrogram import Client, filters
+from pyrogram.errors import MessageDeleteForbidden
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler, ChatMemberUpdatedHandler
-from pyrogram.types import Message, ChatMemberUpdated
 
-from loggers import db_logger
+from loggers import db_logger, bot_logger
 from globals import bot_data
 import core
 
@@ -25,6 +24,15 @@ async def save_persistence(json_dict: dict):
         db_logger.error(err)
     finally:
         await conn.close()
+
+
+async def safe_delete(client, message):
+    try:
+        await message.delete()
+    except MessageDeleteForbidden:
+        bot_logger.error("❌ Il bot non ha i permessi per cancellare il messaggio.")
+    except Exception as e:
+        bot_logger.error(f"❌ Altro errore durante la cancellazione: {e}")
 
 
 async def add_handlers(app: Client):
