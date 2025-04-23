@@ -727,15 +727,9 @@ async def user_points(client: Client, message: Message):
         return
 
     if len(message.command) <= 1:
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text="⚠️ Devi specificare un utente.\n\n"
-                 f"<b>Esempio</b>:\n\t<code>/punti @username</code>\n\t<code>/punti 7654321</code>"
-        )
-        return
-
-    user = message.command[1]
+        user = message.from_user.id
+    else:
+        user = message.command[1]
 
     try:
         tagged = await client.get_chat_member(
