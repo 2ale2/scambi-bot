@@ -14,7 +14,7 @@ import core
 
 
 async def save_persistence(json_dict: dict):
-    if "confirmations" not in json_dict:
+    if "confirmations" in json_dict:
         del json_dict["confirmations"]
     json_content = json.dumps({"jsondata": json_dict})
     conn = await connect_to_database()
