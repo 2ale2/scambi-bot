@@ -2,7 +2,7 @@ import os
 import re
 import locale
 from pyrogram import Client
-from pyrogram.enums import ParseMode, ChatMemberStatus
+from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 from pyrogram.errors import RPCError
 from globals import bot_data
@@ -12,7 +12,7 @@ import pytz
 from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled, \
     get_user_exchanges, get_user_points, retrieve_user
 from modules.loggers import db_logger, bot_logger
-from modules.utils import save_persistence, safe_delete
+from modules.utils import save_persistence, safe_delete, is_admin, safety_check
 
 
 async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
@@ -35,6 +35,8 @@ async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
 
 
 async def intercept_user_message(client: Client, message: Message):
+    if not await safety_check(client, message):
+        return
     if message.from_user.username is not None:
         res = await add_to_table(
             table_name="users",
@@ -50,10 +52,14 @@ async def intercept_user_message(client: Client, message: Message):
 async def start(client: Client, message: Message):
     global bot_data
     await safe_delete(client, message)
+
+    if not message.chat.type != ChatType.PRIVATE:
+        return
+
+    await safety_check(client, message)
+
     if not await is_admin(message.from_user.id):
-        text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
-                f"🔹 Puoi mandare <code>[.!/]punti</code> per conoscere quanti punti possiedi "
-                f"(<b>funziona anche nel gruppo</b>).")
+        text = "❌ Non sei admin."
     else:
         text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
                 f"🔹 Ecco una lista dei comandi:\n\n"
@@ -99,6 +105,9 @@ async def send_confirmation_request(message: Message, user: str):
 
 async def exchange(client: Client, message: Message):
     global bot_data
+    if not await safety_check(client, message):
+        await safe_delete(client, message)
+        return
 
     sender = message.from_user
 
@@ -471,7 +480,7 @@ async def send_message_with_close_button(client: Client,
 
 async def user_exchanges(client: Client, message: Message):
     await safe_delete(client, message)
-    if not await is_admin(message.from_user.id):
+    if not safety_check(client, message):
         return
 
     if len(message.command) <= 1:
@@ -696,7 +705,7 @@ async def user_exchanges(client: Client, message: Message):
 
 async def user_points(client: Client, message: Message):
     await safe_delete(client, message)
-    if not await is_admin(message.from_user.id):
+    if not await safety_check(client, message):
         res = await get_user_points(message.from_user.id)
         if len(res) == 0:
             await send_message_with_close_button(
@@ -790,10 +799,6 @@ async def user_points(client: Client, message: Message):
         message=message,
         text=text
     )
-
-
-async def is_admin(user_id: int | str) -> bool:
-    return int(user_id) in [538590507, 8101457635, 6710922454, 6602225958]
 
 
 # serve per evitare eccezioni

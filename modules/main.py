@@ -1,11 +1,13 @@
 import os
 import logging
 import json
-from utils import save_persistence, add_handlers, connect_to_database
+from utils import save_persistence, connect_to_database
+import core
 from loggers import db_logger, bot_logger
 from database import is_table_empty
 
-from pyrogram import Client
+from pyrogram import Client, filters
+from pyrogram.handlers import MessageHandler, CallbackQueryHandler, ChatMemberUpdatedHandler
 import asyncio
 
 import pyrogram.errors
@@ -19,6 +21,100 @@ logging.basicConfig(
 
 httpx_logger = logging.getLogger('httpx')
 httpx_logger.setLevel(logging.WARNING)
+
+
+async def add_handlers(app: Client):
+    app.add_handler(
+        MessageHandler(
+            callback=core.start,
+            filters=filters.command(
+                commands="start",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.exchange,
+            filters=filters.command(
+                commands="feedback",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.close_message,
+            filters=filters.regex(r"^close.*")
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.cancel_exchange,
+            filters=filters.regex(r"^cancel_exchange.*")
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.user_exchanges,
+            filters=filters.command(
+                commands="scambi",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.user_points,
+            filters=filters.command(
+                commands="punti",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
+        ChatMemberUpdatedHandler(
+            callback=core.intercept_user_join,
+            filters=filters.command(
+                commands="scambi_admin",
+            )
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.user_points,
+            filters=filters.chat(os.getenv("GROUP_ID"))
+        ),
+        group=-1
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.close_message,
+            filters=filters.regex(r"^cancel_admin.*")
+        ),
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.confirm_exchange,
+            filters=filters.regex(r"^confirm_exchange.*")
+        ),
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.close_message,
+            filters=filters.regex(r"^confirm_and_close.*")
+        )
+    )
 
 
 async def post_init(app: Client):

@@ -1,15 +1,12 @@
 import json
-
 import asyncpg
 import os
-
-from pyrogram import Client, filters
+from pyrogram import Client
+from pyrogram.enums import ChatType
 from pyrogram.errors import MessageDeleteForbidden
-from pyrogram.handlers import MessageHandler, CallbackQueryHandler, ChatMemberUpdatedHandler
-
+from pyrogram.types import Message, ChatMember
 from loggers import db_logger, bot_logger
 from globals import bot_data
-import core
 
 
 async def save_persistence(json_dict: dict):
@@ -26,6 +23,10 @@ async def save_persistence(json_dict: dict):
         await conn.close()
 
 
+async def is_admin(user_id: int | str) -> bool:
+    return int(user_id) in [538590507, 8101457635, 6710922454, 6602225958]
+
+
 async def safe_delete(client, message):
     try:
         await message.delete()
@@ -35,98 +36,70 @@ async def safe_delete(client, message):
         bot_logger.error(f"❌ Altro errore durante la cancellazione: {e}")
 
 
-async def add_handlers(app: Client):
-    app.add_handler(
-        MessageHandler(
-            callback=core.start,
-            filters=filters.command(
-                commands="start",
-                prefixes=list(".!/")
+async def safety_check(client: Client, message: Message):
+    if message.chat.type == ChatType.PRIVATE:
+        if await is_admin(message.from_user.id):
+            return True
+
+        text = ("Un utente non admin ha inviato un messaggio in privato al bot.\n\n"
+                f"User ID: {str(message.from_user.id)}\n")
+        if message.from_user.username is not None:
+            text += f"Username: {message.from_user.username}\n"
+        text += f"First Name: {message.from_user.first_name}\n"
+        text += f"Message: {message.text}"
+        try:
+            sender = await client.get_chat_member(
+                chat_id=os.getenv("GROUP_ID"),
+                user_id=message.from_user.id
             )
-        )
-    )
+            if not isinstance(sender, ChatMember):
+                raise Exception
+        except Exception:
+            text += "\nSembra che tale utente non sia nel gruppo ufficiale."
+        finally:
+            bot_logger.warning(text)
+            return False
 
-    app.add_handler(
-        MessageHandler(
-            callback=core.exchange,
-            filters=filters.command(
-                commands="feedback",
-                prefixes=list(".!/")
+    elif message.chat.id == int(os.getenv("GROUP_ID")):
+        return True
+
+    text = ("⚠️ <b>Attenzione</b>\n\n"
+            "È stato mandato un messaggio su un altro gruppo e il bot è stato in grado di vederlo; questo "
+            "significa che <b>molto probabilmente il bot è stato aggiunto in un'altra chat</b> (vedi sotto).\n\n"
+            f"Chat: {message.chat.title} ({str(message.chat.id)})\n")
+    if message.chat.invite_link is not None:
+        text += f"Invite link: {message.chat.invite_link}\n"
+    text += f"User ID: {str(message.from_user.id)}\n"
+    if message.from_user.username is not None:
+        text += f"Username: {message.from_user.username}\n"
+    text += f"Message: {message.text}\n\n"
+
+    try:
+        await client.leave_chat(message.chat.id)
+        text += "✅ Il bot è automaticamente uscito da tale chat.\n\n"
+    except Exception as e:
+        bot_logger.error("❌ Non è stato possibile uscire da tale chat: " + str(e))
+        text += "❌ Non è stato possibile uscire da tale chat: " + str(e)
+    try:
+        sender = await client.get_chat_member(
+            chat_id=os.getenv("GROUP_ID"),
+            user_id=message.from_user.id
+        )
+        if not isinstance(sender, ChatMember):
+            raise Exception
+    except Exception:
+        text += "\n\nSembra che tale utente non sia nel gruppo ufficiale."
+    finally:
+        bot_logger.warning(text)
+        try:
+            await client.send_message(
+                chat_id=bot_data["admin_id"],
+                text=text
             )
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            callback=core.close_message,
-            filters=filters.regex(r"^close.*")
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            callback=core.cancel_exchange,
-            filters=filters.regex(r"^cancel_exchange.*")
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            callback=core.user_exchanges,
-            filters=filters.command(
-                commands="scambi",
-                prefixes=list(".!/")
-            )
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            callback=core.user_points,
-            filters=filters.command(
-                commands="punti",
-                prefixes=list(".!/")
-            )
-        )
-    )
-
-    app.add_handler(
-        ChatMemberUpdatedHandler(
-            callback=core.intercept_user_join,
-            filters=filters.command(
-                commands="scambi_admin",
-            )
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            callback=core.user_points,
-            filters=filters.chat(os.getenv("GROUP_ID"))
-        ),
-        group=-1
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            callback=core.close_message,
-            filters=filters.regex(r"^cancel_admin.*")
-        ),
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            callback=core.confirm_exchange,
-            filters=filters.regex(r"^confirm_exchange.*")
-        ),
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            callback=core.close_message,
-            filters=filters.regex(r"^confirm_and_close.*")
-        )
-    )
+        except Exception as e:
+            bot_logger.error(f"Non è stato possibile mandare il messaggio all'admin {e}")
+        finally:
+            return False
 
 
 async def connect_to_database():
