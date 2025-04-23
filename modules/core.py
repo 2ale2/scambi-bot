@@ -51,7 +51,7 @@ async def intercept_user_message(client: Client, message: Message):
 
 async def start(client: Client, message: Message):
     global bot_data
-    await safe_delete(client, message)
+    await safe_delete(message)
 
     if not message.chat.type == ChatType.PRIVATE:
         return
@@ -106,13 +106,13 @@ async def send_confirmation_request(message: Message, user: str):
 async def exchange(client: Client, message: Message):
     global bot_data
     if not await safety_check(client, message):
-        await safe_delete(client, message)
+        await safe_delete(message)
         return
 
     sender = message.from_user
 
     if message.caption is None:
-        await safe_delete(client, message)
+        await safe_delete(message)
         text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
         await send_message_with_close_button(client=client, message=message, text=text)
         return
@@ -123,7 +123,7 @@ async def exchange(client: Client, message: Message):
 
     _, mentioned = match.group(1), (match.group(2) or None)
     if mentioned is None:
-        await safe_delete(client, message)
+        await safe_delete(message)
         text = "⚠️ Indica l'<b>utente</b> con cui hai effettuato lo scambio."
         await send_message_with_close_button(client=client, message=message, text=text)
         return
@@ -131,7 +131,7 @@ async def exchange(client: Client, message: Message):
     user = match.group(3) or match.group(4) or match.group(2)
     feedback = match.group(5) or None
     if feedback is None:
-        await safe_delete(client, message)
+        await safe_delete(message)
         text = "⚠️ Aggiungi un <b>feedback</b> per assegnare lo scambio."
         await send_message_with_close_button(client=client, message=message, text=text)
         return
@@ -161,7 +161,7 @@ async def exchange(client: Client, message: Message):
             return
 
     if recipient.user.id == sender.id:
-        await safe_delete(client, message)
+        await safe_delete(message)
         await send_message_with_close_button(
             client=client,
             message=message,
@@ -170,7 +170,7 @@ async def exchange(client: Client, message: Message):
         return
 
     if recipient.status == "LEFT":
-        await safe_delete(client, message)
+        await safe_delete(message)
         await send_message_with_close_button(
             client=client,
             message=message,
@@ -179,7 +179,7 @@ async def exchange(client: Client, message: Message):
         return
 
     if recipient.status == "BANNED":
-        await safe_delete(client, message)
+        await safe_delete(message)
         await send_message_with_close_button(
             client=client,
             message=message,
@@ -188,7 +188,7 @@ async def exchange(client: Client, message: Message):
         return
 
     if recipient.user.is_bot:
-        await safe_delete(client, message)
+        await safe_delete(message)
         await send_message_with_close_button(
             client=client,
             message=message,
@@ -283,7 +283,7 @@ async def exchange(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    await safe_delete(client, message)
+    await safe_delete(message)
 
 
 async def confirm_exchange(client: Client, callback_query: CallbackQuery):
@@ -406,7 +406,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
     )
 
     del bot_data["confirmations"][callback_query.from_user.username.replace('@', '')]
-    await safe_delete(client, message)
+    await safe_delete(message)
 
 
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):
@@ -479,7 +479,7 @@ async def send_message_with_close_button(client: Client,
 
 
 async def user_exchanges(client: Client, message: Message):
-    await safe_delete(client, message)
+    await safe_delete(message)
     if not safety_check(client, message):
         return
 
@@ -704,7 +704,7 @@ async def user_exchanges(client: Client, message: Message):
 
 
 async def user_points(client: Client, message: Message):
-    await safe_delete(client, message)
+    await safe_delete(message)
     if not await safety_check(client, message):
         res = await get_user_points(message.from_user.id)
         if len(res) == 0:
@@ -811,9 +811,9 @@ async def close_message(client: Client, callback_query: CallbackQuery):
         if user := (callback_query.data.split("_", maxsplit=3)[-1]):
             if user in bot_data["confirmations"]:
                 del bot_data["confirmations"][user]
-        await callback_query.message.delete()
+        await safe_delete(callback_query.message)
     elif callback_query.data.startswith("confirm_and_close"):
         if await is_admin(callback_query.from_user.id):
-            await callback_query.message.delete()
+            await safe_delete(callback_query.message)
     else:
-        await callback_query.message.delete()
+        await safe_delete(callback_query.message)

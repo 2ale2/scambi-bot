@@ -27,7 +27,7 @@ async def is_admin(user_id: int | str) -> bool:
     return int(user_id) in [538590507, 8101457635, 6710922454, 6602225958]
 
 
-async def safe_delete(client, message):
+async def safe_delete(message):
     try:
         await message.delete()
     except MessageDeleteForbidden:
