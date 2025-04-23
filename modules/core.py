@@ -753,11 +753,15 @@ async def user_points(client: Client, message: Message):
         res = await get_user_points(str(user).removeprefix('@'))
 
     if len(res) == 0:
+        if len(message.command) > 1:
+            text = ("⚠️ <b>Non ho trovato l'utente nel database</b>.\n\n"
+                     "🆘 Se hai usato uno username, prova col relativo user ID.")
+        else:
+            text = "⚠️ Non ti ho trovato nel database (🎯 <b>0</b> punti)."
         await send_message_with_close_button(
             client=client,
             message=message,
-            text="⚠️ <b>Non ho trovato l'utente nel database</b>.\n\n"
-                 "🆘 Se hai usato uno username, prova col relativo user ID."
+            text=text
         )
         return
 
