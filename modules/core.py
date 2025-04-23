@@ -53,7 +53,7 @@ async def start(client: Client, message: Message):
     global bot_data
     await safe_delete(client, message)
 
-    if not message.chat.type != ChatType.PRIVATE:
+    if not message.chat.type == ChatType.PRIVATE:
         return
 
     await safety_check(client, message)
