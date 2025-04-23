@@ -120,7 +120,7 @@ async def retrieve_user(username: str):
         return False
 
 
-async def decrease_user_points(user_id: int | str, points=1):
+async def decrease_user_points(user_id: int, points=1):
     conn = await connect_to_database()
     try:
         points = await conn.fetchval(
@@ -141,7 +141,7 @@ async def decrease_user_points(user_id: int | str, points=1):
 
 async def get_user_exchanges(user: int | str):
     conn = await connect_to_database()
-    if user.isnumeric():
+    if isinstance(user, int) or user.isnumeric():
         user = int(user)
         query = f"SELECT * FROM exchanges WHERE member_1 = $1 OR member_2 = $1"
     else:
@@ -158,7 +158,7 @@ async def get_user_exchanges(user: int | str):
 
 async def get_user_points(user: int | str):
     conn = await connect_to_database()
-    if user.isnumeric():
+    if isinstance(user, int) or user.isnumeric():
         user = int(user)
         query = f"SELECT * FROM main_table WHERE user_id = $1"
     else:
