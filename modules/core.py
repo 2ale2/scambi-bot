@@ -480,7 +480,7 @@ async def send_message_with_close_button(client: Client,
 
 async def user_exchanges(client: Client, message: Message):
     await safe_delete(message)
-    if not safety_check(client, message):
+    if not await safety_check(client, message):
         return
 
     if len(message.command) <= 1:
