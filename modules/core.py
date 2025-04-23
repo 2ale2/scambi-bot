@@ -710,7 +710,7 @@ async def user_points(client: Client, message: Message):
             await send_message_with_close_button(
                 client=client,
                 message=message,
-                text="❌ Non sei admin. Puoi usare <code>/punti</code> nel gruppo per conoscere il tuo punteggio."
+                text="❌ Non sei admin."
             )
             return
         res = await get_user_points(message.from_user.id)
