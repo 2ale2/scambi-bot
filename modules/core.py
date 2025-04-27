@@ -5,7 +5,7 @@ from pyrogram import Client
 from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 from pyrogram.errors import RPCError
-from globals import bot_data
+from globals import bot_data, soglia
 from datetime import datetime
 import pytz
 
@@ -237,7 +237,7 @@ async def exchange(client: Client, message: Message):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
+            text=f"🎯 L'utente {sender.mention} ha ottenuto {soglia} punti."
         )
         bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
@@ -249,20 +249,20 @@ async def exchange(client: Client, message: Message):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {recipient.user.mention} ha ottenuto 6 punti."
+            text=f"🎯 L'utente {recipient.user.mention} ha ottenuto {soglia} punti."
         )
         bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
-        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → 6 (+1)\n"
+        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {soglia} (+1)\n"
     else:
         text += (f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender}"
                  f" (+1)\n")
 
     if points_recipient == 0:
-        text += f"🎁 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → 6 (+1)\n"
+        text += f"🎁 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → {soglia} (+1)\n"
     else:
         text += (f"🔹 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → "
                  f"{points_recipient} (+1)\n")
@@ -362,7 +362,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {sender.mention} ha ottenuto 6 punti."
+            text=f"🎯 L'utente {sender.mention} ha ottenuto {soglia} punti."
         )
         bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
@@ -374,20 +374,20 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {recipient.mention} ha ottenuto 6 punti."
+            text=f"🎯 L'utente {recipient.mention} ha ottenuto {soglia} punti."
         )
         bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
-        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → 6 (+1)\n"
+        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {soglia} (+1)\n"
     else:
         text += (f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender}"
                  f" (+1)\n")
 
     if points_recipient == 0:
-        text += f"🎁 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → 6 (+1)\n"
+        text += f"🎁 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {soglia} (+1)\n"
     else:
         text += (f"🔹 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {points_recipient}"
                  f" (+1)\n")

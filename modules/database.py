@@ -4,6 +4,7 @@ import re
 
 from modules.utils import connect_to_database
 from loggers import db_logger, bot_logger
+from globals import soglia
 
 
 async def is_username_valid(username: str):
@@ -56,7 +57,7 @@ async def get_columns_order(conn, table_name: str):
 async def add_to_table(table_name: str, content: dict):
     """
     Aggiunge entry al database. Se l'utente esiste, aggiorna punti e username.
-    Se i punti arrivano a 6, vengono azzerati e viene notificato il reset.
+    Se i punti arrivano a globals.soglia, vengono azzerati e viene notificato il reset.
 
     :param table_name: il nome della tabella
     :param content: dizionario del tipo {'colonna1': valore1, ...}
@@ -80,7 +81,7 @@ async def add_to_table(table_name: str, content: dict):
         if table_name == "main_table":
             query += (
                 f"ON CONFLICT (user_id) DO UPDATE SET "
-                f"points = CASE WHEN {table_name}.points + 1 >= 6 THEN 0 ELSE {table_name}.points + 1 END, "
+                f"points = CASE WHEN {table_name}.points + 1 >= {soglia} THEN 0 ELSE {table_name}.points + 1 END, "
                 f"total = {table_name}.total + 1,"
                 f"username = EXCLUDED.username "
                 f"RETURNING points"
