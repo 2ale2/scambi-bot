@@ -81,7 +81,7 @@ async def add_to_table(table_name: str, content: dict):
         if table_name == "main_table":
             query += (
                 f"ON CONFLICT (user_id) DO UPDATE SET "
-                f"points = CASE WHEN {table_name}.points + 1 >= {soglia} THEN 0 ELSE {table_name}.points + 1 END, "
+                f"points = CASE WHEN {table_name}.points + 1 >= {int(soglia)} THEN 0 ELSE {table_name}.points + 1 END, "
                 f"total = {table_name}.total + 1,"
                 f"username = EXCLUDED.username "
                 f"RETURNING points"
