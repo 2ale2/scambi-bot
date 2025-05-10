@@ -40,7 +40,8 @@ async def safety_check(client: Client, message: Message):
     if message.chat.type == ChatType.PRIVATE:
         return await is_admin(message.from_user.id)
 
-    elif message.chat.id == int(os.getenv("GROUP_ID")):
+
+    elif message.chat.id == int(bot_data["group_id"]):
         return True
 
     text = ("⚠️ <b>Attenzione</b>\n\n"
@@ -62,24 +63,24 @@ async def safety_check(client: Client, message: Message):
         text += "❌ Non è stato possibile uscire da tale chat: " + str(e)
     try:
         sender = await client.get_chat_member(
-            chat_id=os.getenv("GROUP_ID"),
+            chat_id=bot_data["group_id"],
             user_id=message.from_user.id
         )
         if not isinstance(sender, ChatMember):
             raise Exception
     except Exception:
         text += "\n\nSembra che tale utente non sia nel gruppo ufficiale."
-    finally:
-        bot_logger.warning(text)
-        try:
-            await client.send_message(
-                chat_id=bot_data["admin_id"],
-                text=text
-            )
-        except Exception as e:
-            bot_logger.error(f"Non è stato possibile mandare il messaggio all'admin {e}")
-        finally:
-            return False
+
+    bot_logger.warning(text)
+    try:
+        await client.send_message(
+            chat_id=bot_data["admin_id"],
+            text=text
+        )
+    except Exception as e:
+        bot_logger.error(f"Non è stato possibile mandare il messaggio all'admin {e}")
+
+    return False
 
 
 async def connect_to_database():
