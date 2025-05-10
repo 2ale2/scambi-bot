@@ -37,9 +37,11 @@ async def safe_delete(message):
 
 
 async def safety_check(client: Client, message: Message):
+    bot_logger.info(f"Safety check for {message.from_user.id} in {message.chat.id}... Group ID: {bot_data['group_id']} "
+                    f"Env Variable: {os.getenv('GROUP_ID')}")
+
     if message.chat.type == ChatType.PRIVATE:
         return await is_admin(message.from_user.id)
-
 
     elif message.chat.id == int(bot_data["group_id"]):
         return True
