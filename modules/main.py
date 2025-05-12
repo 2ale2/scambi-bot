@@ -127,7 +127,7 @@ async def post_init(app: Client):
         try:
             await app.get_chat_member(int(bot_data["group_id"]), "me")
         except pyrogram.errors.RPCError:
-            bot_logger.error("Group ID not actual! Change it in the .env file.")
+            bot_logger.error(f"Group ID {bot_data['group_id']} not actual! Change it in the .env file.")
             exit(1)
         else:
             bot_logger.info("Group ID was correct. Editing DB...")

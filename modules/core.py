@@ -740,7 +740,7 @@ async def user_points(client: Client, message: Message):
         return
 
     if len(message.command) <= 1:
-        user = message.from_user.id
+        user = str(message.from_user.id)
     else:
         user = message.command[1]
 

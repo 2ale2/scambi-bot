@@ -9,7 +9,7 @@ file_handler = RotatingFileHandler(os.path.join("logs", "database.log"), maxByte
 file_handler.setFormatter(formatter)
 db_logger.addHandler(file_handler)
 
-bot_logger = logging.getLogger("dblogger")
+bot_logger = logging.getLogger("bot_logger")
 bot_logger.setLevel(logging.INFO)
 file_handler = RotatingFileHandler(os.path.join("logs", "bot.log"), maxBytes=10000000, backupCount=0)
 file_handler.setFormatter(formatter)
