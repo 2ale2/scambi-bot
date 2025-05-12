@@ -45,6 +45,16 @@ async def add_handlers(app: Client):
     )
 
     app.add_handler(
+        MessageHandler(
+            callback=core.gift,
+            filters=filters.command(
+                commands="gift",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
         CallbackQueryHandler(
             callback=core.close_message,
             filters=filters.regex(r"^close.*")
@@ -127,8 +137,8 @@ async def post_init(app: Client):
         try:
             await app.get_chat_member(int(bot_data["group_id"]), "me")
         except pyrogram.errors.RPCError:
-            bot_logger.error(f"Group ID {bot_data['group_id']} not actual! Change it in the .env file.")
-            exit(1)
+            bot_logger.warning(f"Group ID {bot_data['group_id']} not actual! Trigger an update in the new group right "
+                               f"now, then restart the bot to make it notice the new chat.")
         else:
             bot_logger.info("Group ID was correct. Editing DB...")
             for el in ["owner_id", "admin_id"]:

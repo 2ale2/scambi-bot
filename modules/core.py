@@ -1,6 +1,7 @@
 import os
 import re
 import locale
+
 from pyrogram import Client
 from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
@@ -77,30 +78,77 @@ async def start(client: Client, message: Message):
     )
 
 
-async def send_confirmation_request(message: Message, user: str):
+async def send_confirmation_request(client: Client, message: Message, user: str, gift_bool=False):
     global bot_data
     sender = message.from_user.id
-    keyboard = [
-        [
-            InlineKeyboardButton("🖋 Conferma Scambio",
-                                 callback_data=f"confirm_exchange_{sender}_{user.replace('@', '')}")
-        ],
-        [
-            InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"close_admin_{user.replace('@', '')}")
+    if not gift_bool:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="🖋 Conferma Scambio",
+                    callback_data=f"confirm_exchange_{sender}_{user.replace('@', '')}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🖍 Annulla Scambio",
+                    callback_data=f"close_admin_{user.replace('@', '')}"
+                )
+            ]
         ]
-    ]
+        text = (f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo scambio <u>necessita di conferma</u> da parte dell'utente "
+                f"{user}.")
+    else:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="🖋 Conferma Regalo",
+                    callback_data=f"confirm_gift_{sender}_{user.replace('@', '')}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🖍 Annulla Regalo",
+                    callback_data=f"close_admin_gift_{user.replace('@', '')}"
+                )
+            ]
+        ]
+        text = (f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo regalo <u>necessita di conferma</u> da parte dell'utente "
+                f"{user}.")
+
+    if "confirmations" not in bot_data:
+        bot_data["confirmations"] = {}
+
+    if (user.replace("@", "") in bot_data["confirmations"] and
+            "gift" in bot_data["confirmations"][user.replace("@", "")]):
+        try:
+            confirm_message = await client.get_messages(
+                chat_id=message.chat.id,
+                message_ids=bot_data["confirmations"][user.replace("@", "")]["gift"].id
+            )
+        except Exception:
+            pass
+        else:
+            await confirm_message.reply_text(
+                text=f"⚠️ L'utente {'@' + user.replace("@", "")} deve <b>ancora confermare un'altro regalo</b>.\n\n"
+                     f"🆘 Se il messaggio della richiesta di conferma è stato rimosso o non produce alcun effetto, "
+                     f"chiedi ad un admin di cancellare il messaggio cui sto rispondendo, poi riformula la "
+                     f"richiesta usando il comando /gift.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🚮 Chiudi", callback_data=f"close")]])
+            )
+            return
+
     try:
         await message.reply_text(
-            text=f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo scambio <u>necessita di conferma</u> da parte dell'utente "
-                 f"{user}.",
+            text=text,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
         bot_logger.error(f"error sending confirmation request: {e}")
         return
-    if "confirmations" not in bot_data:
-        bot_data["confirmations"] = {}
-    bot_data["confirmations"][user.replace("@", "")] = message
+
+    bot_data["confirmations"][user.replace("@", "")] = {"gift": message}
     return
 
 
@@ -276,6 +324,127 @@ async def exchange(client: Client, message: Message):
             InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
         ]
     ]
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+    await safe_delete(message)
+
+
+async def gift(client: Client, message: Message):
+    global bot_data
+    if not await safety_check(client, message):
+        await safe_delete(message)
+        return
+
+    sender = message.from_user
+
+    if message.caption is None:
+        await safe_delete(message)
+        text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
+        await send_message_with_close_button(client=client, message=message, text=text)
+        return
+
+    pattern = r"[/.!](\w+)(?:\s+(@\w+|(\d{7,})|<a\s+href=\"tg://user\?id=(\d{7,})\">.*?</a>))?"
+
+    match = re.match(pattern, message.caption)
+
+    _, mentioned = match.group(1), (match.group(2) or None)
+    if mentioned is None:
+        await safe_delete(message)
+        text = "⚠️ Indica l'<b>utente</b> a cui hai donato il regalo."
+        await send_message_with_close_button(client=client, message=message, text=text)
+        return
+
+    user = match.group(3) or match.group(4) or match.group(2)
+
+    try:
+        recipient = await client.get_chat_member(
+            chat_id=message.chat.id,
+            user_id=user
+        )
+    except Exception:
+        if not user.isnumeric():
+            recipient = await retrieve_user(user)
+            if not recipient:
+                await send_confirmation_request(client=client, message=message, user=user, gift_bool=True)
+                return
+            else:
+                try:
+                    recipient = await client.get_chat_member(
+                        chat_id=int(os.getenv("GROUP_ID")),
+                        user_id=dict(recipient[0])["user_id"]
+                    )
+                except Exception:
+                    await send_confirmation_request(client=client, message=message, user=user, gift_bool=True)
+                    return
+        else:
+            await send_confirmation_request(client=client, message=message, user=user, gift_bool=True)
+            return
+
+    if recipient.user.id == sender.id:
+        await safe_delete(message)
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ <b>Warning</b>\n\n▪️ Tagga l'utente a cui stai facendo la donazione."
+        )
+        return
+
+    if recipient.status == "LEFT":
+        await safe_delete(message)
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ <b>Warning</b>\n\n▪️ L'utente non è nel gruppo."
+        )
+        return
+
+    if recipient.status == "BANNED":
+        await safe_delete(message)
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ <b>Warning</b>\n\n▪️ Non donare ad utenti bannati."
+        )
+        return
+
+    if recipient.user.is_bot:
+        await safe_delete(message)
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ <b>Warning</b>\n\n▪️ Hai taggato un bot."
+        )
+        return
+
+    forwarded = await message.forward(chat_id=int(os.getenv("DEPOSIT_CHAT_ID")))
+
+    added_id = await add_to_table(
+        table_name="regali",
+        content={
+            "user_id": sender.id,
+            "username": sender.username,
+            "gifted_id": recipient.user.id,
+            "gifted_username": recipient.user.username,
+            "screenshot": forwarded.link
+        }
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🖍 Annulla Regalo", callback_data=f"cancel_gift_{added_id}")
+        ],
+        [
+            InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
+        ]
+    ]
+
+    text = f"🎁 Regalo da {sender.mention} a {recipient.user.mention} <b>correttamente registrato</b>!"
 
     await client.send_message(
         chat_id=message.chat.id,
