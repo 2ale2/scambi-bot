@@ -351,7 +351,7 @@ async def gift(client: Client, message: Message):
 
     pattern = r"[/.!](\w+)(?:\s+(@\w+|(\d{7,})|<a\s+href=\"tg://user\?id=(\d{7,})\">.*?</a>))?"
 
-    match = re.match(pattern, message.caption)
+    match = re.match(pattern, message.caption.html)
 
     _, mentioned = match.group(1), (match.group(2) or None)
     if mentioned is None:
