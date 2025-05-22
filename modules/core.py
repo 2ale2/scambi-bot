@@ -10,8 +10,8 @@ from globals import bot_data, soglia
 from datetime import datetime
 import pytz
 
-from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled, \
-    get_user_exchanges, get_user_points, retrieve_user
+from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
+    get_user_exchanges, get_user_points, retrieve_user, get_user_gifts
 from modules.loggers import db_logger, bot_logger
 from modules.utils import save_persistence, safe_delete, is_admin, safety_check
 
@@ -425,7 +425,7 @@ async def gift(client: Client, message: Message):
     forwarded = await message.forward(chat_id=int(os.getenv("DEPOSIT_CHAT_ID")))
 
     added_id = await add_to_table(
-        table_name="regali",
+        table_name="gifts",
         content={
             "user_id": sender.id,
             "username": sender.username,
@@ -454,6 +454,84 @@ async def gift(client: Client, message: Message):
     )
 
     await safe_delete(message)
+
+
+async def request_gift(client: Client, message: Message):
+    global bot_data
+    if not await safety_check(client, message):
+        await safe_delete(message)
+        return
+
+    gifts = await get_user_gifts(user=message.from_user.id)
+
+    if len(gifts["given"]) == 0 and len(gifts["received"]) >= 2:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"⚠️ <b>Warning</b>\n\n🔸 <b>{message.from_user.mention} ha già ricevuto 2 regali</b>. "
+                 "Per poterne chiedere un altro, deve prima farne almeno uno.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+            ])
+        )
+        await safe_delete(message)
+        return
+
+    if len(gifts["given"]) > 0:
+        last_given = gifts["given"][0]
+
+        valid_received = [
+            dict(item) for item in gifts["received"] if dict(item)["given_at"] > dict(last_given)["given_at"]
+        ]
+
+        if len(valid_received) >= 2:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=f"⚠️ <b>Warning</b>\n\n🔸 <b>{message.from_user.mention} ha già ricevuto 2 regali da quando ha "
+                     f"fatto l'ultimo regalo</b>. Per poterne chiedere un altro, deve prima farne almeno uno.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+                ])
+            )
+            await safe_delete(message)
+            return
+
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+            ])
+        )
+        await safe_delete(message)
+
+
+
+async def cancel_gift(client: Client, callback_query: CallbackQuery):
+    if not await is_admin(callback_query.from_user.id):
+        return
+
+    gift_id = callback_query.data.split("_")[-1]
+    gift_infos = await get_item_infos(table="gifts", identifier=gift_id)
+
+    sender = await client.get_chat_member(
+        chat_id=callback_query.message.chat.id,
+        user_id=gift_infos["username"] if gift_infos["username"] else gift_infos["user_id"]
+    )
+
+    recipient = await client.get_chat_member(
+        chat_id=callback_query.message.chat.id,
+        user_id=gift_infos["gifted_username"] if gift_infos["gifted_username"] else gift_infos["gifted_id"]
+    )
+
+    await set_as_cancelled(table="gifts", identifier=gift_id)
+    await send_message_with_close_button(
+        client=client,
+        message=None,
+        chat_id=callback_query.message.chat.id,
+        text=f"🌪 Regalo da {sender.user.mention} a {recipient.user.mention} <b>cancellato</b> correttamente."
+    )
+
+    await safe_delete(callback_query.message)
 
 
 async def confirm_exchange(client: Client, callback_query: CallbackQuery):
@@ -582,7 +660,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):
     if not await is_admin(callback_query.from_user.id):
         return
-    exchange_infos = await get_exchange_infos(callback_query.data.split("_")[-1])
+    exchange_infos = await get_item_infos(table="exchanges", identifier=callback_query.data.split("_")[-1])
     points_sender = await decrease_user_points(exchange_infos["member_1"])
     points_recipient = await decrease_user_points(exchange_infos["member_2"])
 
@@ -614,7 +692,7 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
         user_id=exchange_infos["member_2"]
     )
 
-    await set_exchange_cancelled(exchange_infos["id"])
+    await set_as_cancelled(table="exchanges", identifier=exchange_infos["id"])
 
     await send_message_with_close_button(
         client=client,
@@ -697,7 +775,7 @@ async def user_exchanges(client: Client, message: Message):
     except Exception:
         tagged = None
 
-    res = await get_user_exchanges(str(tagged.user.id) if tagged is not None else str(user).removeprefix('@'))
+    res = await get_user_exchanges(user=str(tagged.user.id) if tagged is not None else str(user).removeprefix('@'))
 
     if res == -1:
         await send_message_with_close_button(
@@ -989,7 +1067,7 @@ async def close_message(client: Client, callback_query: CallbackQuery):
         if not await is_admin(callback_query.from_user.id):
             return
         if user := (callback_query.data.split("_", maxsplit=3)[-1]):
-            if user in bot_data["confirmations"]:
+            if "confirmations" in bot_data and user in bot_data["confirmations"]:
                 del bot_data["confirmations"][user]
         await safe_delete(callback_query.message)
     elif callback_query.data.startswith("confirm_and_close"):

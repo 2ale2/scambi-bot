@@ -89,6 +89,9 @@ async def add_to_table(table_name: str, content: dict):
         elif table_name == "exchanges":
             query += "RETURNING id"
 
+        elif table_name == "gifts":
+            query += "RETURNING id"
+
         elif table_name == "users":
             if not await is_username_valid(content['username']):
                 db_logger.error(f"Username non valido: {content['username']}")
@@ -174,11 +177,48 @@ async def get_user_points(user: int | str):
         return res
 
 
-async def set_exchange_cancelled(identifier: int | str):
+async def get_user_gifts(user: int | str):
+    conn = await connect_to_database()
+    gifts = {}
+    # ricevuti
+    if isinstance(user, int) or user.isnumeric():
+        user = int(user)
+        query = f"SELECT * FROM gifts WHERE gifted_id = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+    else:
+        user = str(user)
+        query = f"SELECT * FROM gifts WHERE gifted_username = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+    try:
+        gifts["received"] = await conn.fetch(query, user)
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        return -1
+
+    # donati
+    if isinstance(user, int) or user.isnumeric():
+        user = int(user)
+        query = f"SELECT * FROM gifts WHERE user_id = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+    else:
+        user = str(user)
+        query = f"SELECT * FROM gifts WHERE username = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+    try:
+        gifts["given"] = await conn.fetch(query, user)
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        return -1
+    else:
+        return gifts
+    finally:
+        await conn.close()
+
+
+async def set_as_cancelled(table: str, identifier: int | str):
+    if table != "exchanges" and table != "gifts":
+        raise Exception(f"Table {table} non valida. Deve essere 'exchanges' o 'gifts'.")
+
     conn = await connect_to_database()
     try:
         await conn.execute(
-            query=f"UPDATE exchanges SET cancelled=true WHERE id={identifier}"
+            query=f"UPDATE {table} SET cancelled=true WHERE id={identifier}"
         )
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
@@ -187,11 +227,13 @@ async def set_exchange_cancelled(identifier: int | str):
         await conn.close()
 
 
-async def get_exchange_infos(identifier: int | str):
+async def get_item_infos(table: str, identifier: int | str):
+    if table != "exchanges" and table != "gifts":
+        raise Exception(f"Table {table} non valida. Deve essere 'exchanges' o 'gifts'.")
     conn = await connect_to_database()
     try:
         raw = await conn.fetchrow(
-            query=f"SELECT * FROM exchanges WHERE id={str(identifier)};",
+            query=f"SELECT * FROM {table} WHERE id={str(identifier)};",
         )
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)

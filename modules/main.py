@@ -55,6 +55,16 @@ async def add_handlers(app: Client):
     )
 
     app.add_handler(
+        MessageHandler(
+            callback=core.request_gift,
+            filters=filters.command(
+                commands="request",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
         CallbackQueryHandler(
             callback=core.close_message,
             filters=filters.regex(r"^close.*")
@@ -65,6 +75,13 @@ async def add_handlers(app: Client):
         CallbackQueryHandler(
             callback=core.cancel_exchange,
             filters=filters.regex(r"^cancel_exchange.*")
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.cancel_gift,
+            filters=filters.regex(r"^cancel_gift.*")
         )
     )
 
