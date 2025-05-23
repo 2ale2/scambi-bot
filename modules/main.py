@@ -1,7 +1,8 @@
 import os
 import logging
 import json
-from utils import save_persistence, connect_to_database
+from utils import save_persistence
+from modules.database import connect_to_database
 import core
 from loggers import db_logger, bot_logger
 from database import is_table_empty
@@ -45,12 +46,9 @@ async def add_handlers(app: Client):
     )
 
     app.add_handler(
-        MessageHandler(
-            callback=core.gift,
-            filters=filters.command(
-                commands="gift",
-                prefixes=list(".!/")
-            )
+        CallbackQueryHandler(
+            callback=core.accept_gift,
+            filters=filters.regex(r"^accept_gift_for.*")
         )
     )
 

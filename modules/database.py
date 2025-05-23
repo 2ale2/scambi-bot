@@ -1,8 +1,9 @@
+import os
+
 import asyncpg
 import json
 import re
 
-from modules.utils import connect_to_database
 from loggers import db_logger, bot_logger
 from globals import soglia
 
@@ -183,10 +184,10 @@ async def get_user_gifts(user: int | str):
     # ricevuti
     if isinstance(user, int) or user.isnumeric():
         user = int(user)
-        query = f"SELECT * FROM gifts WHERE gifted_id = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+        query = f"SELECT * FROM gifts WHERE user_id = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
     else:
         user = str(user)
-        query = f"SELECT * FROM gifts WHERE gifted_username = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+        query = f"SELECT * FROM gifts WHERE username = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
     try:
         gifts["received"] = await conn.fetch(query, user)
     except asyncpg.exceptions.PostgresError as err:
@@ -196,10 +197,10 @@ async def get_user_gifts(user: int | str):
     # donati
     if isinstance(user, int) or user.isnumeric():
         user = int(user)
-        query = f"SELECT * FROM gifts WHERE user_id = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+        query = f"SELECT * FROM gifts WHERE gifted_by_id = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
     else:
         user = str(user)
-        query = f"SELECT * FROM gifts WHERE username = $1 AND cancelled = FALSE ORDER BY given_at DESC"
+        query = f"SELECT * FROM gifts WHERE gifted_by_id_username = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
     try:
         gifts["given"] = await conn.fetch(query, user)
     except asyncpg.exceptions.PostgresError as err:
@@ -209,6 +210,23 @@ async def get_user_gifts(user: int | str):
         return gifts
     finally:
         await conn.close()
+
+
+async def execute_query_for_value(query: str, for_value: bool):
+    conn = await connect_to_database()
+    try:
+        if for_value:
+            res = await conn.fetchval(query)
+        else:
+            res = None
+            await conn.execute(query)
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        return False
+    else:
+        if for_value:
+            return res
+        return True
 
 
 async def set_as_cancelled(table: str, identifier: int | str):
@@ -237,7 +255,7 @@ async def get_item_infos(table: str, identifier: int | str):
         )
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
-        raise
+        return None
     else:
         if raw is None:
             db_logger.error(f"{identifier} non esistente in 'exchanges'")
@@ -246,3 +264,18 @@ async def get_item_infos(table: str, identifier: int | str):
             return {key: raw[key] for key in dict(raw)}
     finally:
         await conn.close()
+
+
+async def connect_to_database():
+    try:
+        conn = await asyncpg.connect(
+            host=os.getenv("DB_HOST"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASS"),
+            database=os.getenv("DB_NAME")
+        )
+    except asyncpg.exceptions.PostgresError as err:
+        db_logger.error(err)
+        raise
+    else:
+        return conn

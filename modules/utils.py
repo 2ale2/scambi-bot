@@ -7,6 +7,7 @@ from pyrogram.errors import MessageDeleteForbidden
 from pyrogram.types import Message, ChatMember
 from loggers import db_logger, bot_logger
 from globals import bot_data
+from modules.database import execute_query_for_value, connect_to_database
 
 
 async def save_persistence(json_dict: dict):
@@ -85,16 +86,8 @@ async def safety_check(client: Client, message: Message):
     return False
 
 
-async def connect_to_database():
-    try:
-        conn = await asyncpg.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASS"),
-            database=os.getenv("DB_NAME")
-        )
-    except asyncpg.exceptions.PostgresError as err:
-        db_logger.error(err)
-        raise
+async def delete_user_unaccepted_requests(user: str | int):
+    if isinstance(user, int):
+        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_id IS NULL AND user_id = {user}", False)
     else:
-        return conn
+        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_id IS NULL AND username = {user}", False)

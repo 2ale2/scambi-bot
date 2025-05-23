@@ -11,9 +11,9 @@ from datetime import datetime
 import pytz
 
 from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
-    get_user_exchanges, get_user_points, retrieve_user, get_user_gifts
+    get_user_exchanges, get_user_points, retrieve_user, get_user_gifts, execute_query_for_value
 from modules.loggers import db_logger, bot_logger
-from modules.utils import save_persistence, safe_delete, is_admin, safety_check
+from modules.utils import save_persistence, safe_delete, is_admin, safety_check, delete_user_unaccepted_requests
 
 
 async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
@@ -335,132 +335,15 @@ async def exchange(client: Client, message: Message):
     await safe_delete(message)
 
 
-async def gift(client: Client, message: Message):
-    global bot_data
-    if not await safety_check(client, message):
-        await safe_delete(message)
-        return
-
-    sender = message.from_user
-
-    if message.caption is None:
-        await safe_delete(message)
-        text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
-        await send_message_with_close_button(client=client, message=message, text=text)
-        return
-
-    pattern = r"[/.!](\w+)(?:\s+(@\w+|(\d{7,})|<a\s+href=\"tg://user\?id=(\d{7,})\">.*?</a>))?"
-
-    match = re.match(pattern, message.caption.html)
-
-    _, mentioned = match.group(1), (match.group(2) or None)
-    if mentioned is None:
-        await safe_delete(message)
-        text = "⚠️ Indica l'<b>utente</b> a cui hai donato il regalo."
-        await send_message_with_close_button(client=client, message=message, text=text)
-        return
-
-    user = match.group(3) or match.group(4) or match.group(2)
-
-    try:
-        recipient = await client.get_chat_member(
-            chat_id=message.chat.id,
-            user_id=user
-        )
-    except Exception:
-        if not user.isnumeric():
-            recipient = await retrieve_user(user)
-            if not recipient:
-                await send_confirmation_request(client=client, message=message, user=user, gift_bool=True)
-                return
-            else:
-                try:
-                    recipient = await client.get_chat_member(
-                        chat_id=int(os.getenv("GROUP_ID")),
-                        user_id=dict(recipient[0])["user_id"]
-                    )
-                except Exception:
-                    await send_confirmation_request(client=client, message=message, user=user, gift_bool=True)
-                    return
-        else:
-            await send_confirmation_request(client=client, message=message, user=user, gift_bool=True)
-            return
-
-    if recipient.user.id == sender.id:
-        await safe_delete(message)
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text="⚠️ <b>Warning</b>\n\n▪️ Tagga l'utente a cui stai facendo la donazione."
-        )
-        return
-
-    if recipient.status == "LEFT":
-        await safe_delete(message)
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text="⚠️ <b>Warning</b>\n\n▪️ L'utente non è nel gruppo."
-        )
-        return
-
-    if recipient.status == "BANNED":
-        await safe_delete(message)
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text="⚠️ <b>Warning</b>\n\n▪️ Non donare ad utenti bannati."
-        )
-        return
-
-    if recipient.user.is_bot:
-        await safe_delete(message)
-        await send_message_with_close_button(
-            client=client,
-            message=message,
-            text="⚠️ <b>Warning</b>\n\n▪️ Hai taggato un bot."
-        )
-        return
-
-    forwarded = await message.forward(chat_id=int(os.getenv("DEPOSIT_CHAT_ID")))
-
-    added_id = await add_to_table(
-        table_name="gifts",
-        content={
-            "user_id": sender.id,
-            "username": sender.username,
-            "gifted_id": recipient.user.id,
-            "gifted_username": recipient.user.username,
-            "screenshot": forwarded.link
-        }
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton("🖍 Annulla Regalo", callback_data=f"cancel_gift_{added_id}")
-        ],
-        [
-            InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
-        ]
-    ]
-
-    text = f"🎁 Regalo da {sender.mention} a {recipient.user.mention} <b>correttamente registrato</b>!"
-
-    await client.send_message(
-        chat_id=message.chat.id,
-        text=text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-    await safe_delete(message)
-
-
 async def request_gift(client: Client, message: Message):
     global bot_data
     if not await safety_check(client, message):
         await safe_delete(message)
         return
+
+    await safe_delete(message)
+
+    await delete_user_unaccepted_requests(user=message.from_user.id)
 
     gifts = await get_user_gifts(user=message.from_user.id)
 
@@ -495,15 +378,134 @@ async def request_gift(client: Client, message: Message):
             await safe_delete(message)
             return
 
+        added_id = await add_to_table(
+            table_name="gifts",
+            content={
+                "user_id": message.from_user.id,
+                "username": message.from_user.username if message.from_user.username else None,
+                "gifted_id": None,
+                "gifted_username": None,
+                "given_at": None
+            }
+        )
+
         await client.send_message(
             chat_id=message.chat.id,
             text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
             reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{added_id}")],
                 [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
             ])
         )
-        await safe_delete(message)
 
+
+async def accept_gift(client: Client, callback_query: CallbackQuery):
+    global bot_data
+    gift_id = callback_query.data.split("_")[-1]
+    gift = await get_item_infos(table="gifts", identifier=gift_id)
+    if gift is None:
+        return
+    if callback_query.data.startswith("accept_gift_for_"):
+        if (user_accepting := gift["user_id"]) == (gifting_id := int(callback_query.data.split("_")[-1])):
+            return
+        try:
+            user_requesting = await client.get_chat_member(
+                chat_id=callback_query.message.chat.id,
+                user_id=gifting_id
+            )
+        except Exception as e:
+            # l'utente è uscito nel frattempo, loggo l'errore e via
+            bot_logger.error(msg=f"Errore durante il reperimento delle informazioni dell'utente {gifting_id}: {e}")
+            return
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text=f"✅ Confermo",
+                    callback_data=f"accepting_{user_accepting}_gift_{gift_id}_message_{callback_query.message.id}"
+                ),
+                InlineKeyboardButton(
+                    text=f"❌ Annulla",
+                    callback_data=f"close_{user_accepting}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"🚮 Cancella – Solo Admin",
+                    callback_data=f"close_admin"
+                )
+            ]
+        ]
+
+        await client.send_message(
+            chat_id=callback_query.message.chat.id,
+            text=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention}, stai accettando la richiesta "
+                 f"di un nuovo regalo da {user_requesting.user.mention}. "
+                 f"<b>Se confermi, ti assumi il dovere di fare questo regalo</b>.\n\n"
+                 f"🔸 Confermi?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML
+        )
+
+    elif "accepting" in callback_query.data and "gift" in callback_query.data and "message" in callback_query.data:
+        listed = callback_query.data.split("_")
+        listed.pop(0)
+        listed.pop(1)
+        listed.pop(2)
+        gift = await get_item_infos(table="gifts", identifier=int(listed[1]))
+        listed = {
+            "accepting": int(listed[0]),
+            "gift": gift["user_id"],
+            "message": int(listed[2])
+        }
+        if listed["accepting"] != callback_query.from_user.id:
+            return
+        try:
+            user_requesting = await client.get_chat_member(
+                chat_id=callback_query.message.chat.id,
+                user_id=gift["user_id"]
+            )
+        except Exception as e:
+            bot_logger.error(f"Errore durante il reperimento delle informazioni dell'utente {gift["user_id"]}: {e}")
+            return
+
+        user_accepting = callback_query.from_user
+
+        await execute_query_for_value(
+            query=f"UPDATE gifts "
+                  f"SET gifted_by_id = {user_accepting.id}, "
+                  f"gifted_by_username = {user_accepting.username},"
+                  f"gifted_at = now() "
+                  f"WHERE id = {gift["id"]}",
+            for_value=False
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton("🖍 Annulla Conferma", callback_data=f"cancel_gift_{gift['id']}")
+            ],
+            [
+                InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
+            ]
+        ]
+
+        await client.send_message(
+            chat_id=callback_query.message.chat.id,
+            text=f"✅ <b>Regalo Accettato</b>\n\n"
+                 f"🔸 <b>{user_accepting.mention} ha accettato il regalo "
+                 f"richiesto da {user_requesting.user.mention}</b>.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML
+        )
+
+        try:
+            await client.delete_messages(
+                chat_id=callback_query.message.chat.id,
+                message_ids=[listed["message"], callback_query.message.id]
+            )
+        except Exception as e:
+            bot_logger.warning(f"Errore during the deletion of the message: {e}")
+            pass
 
 
 async def cancel_gift(client: Client, callback_query: CallbackQuery):
@@ -1073,5 +1075,12 @@ async def close_message(client: Client, callback_query: CallbackQuery):
     elif callback_query.data.startswith("confirm_and_close"):
         if await is_admin(callback_query.from_user.id):
             await safe_delete(callback_query.message)
+
+    list_el = callback_query.data.split("_")
+
+    if list_el[-1].isnumeric():
+        if callback_query.from_user.id == int(list_el[-1]):
+            await safe_delete(callback_query.message)
+
     else:
         await safe_delete(callback_query.message)
