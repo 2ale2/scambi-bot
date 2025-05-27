@@ -44,6 +44,7 @@ async def safety_check(client: Client, message: Message):
     if message.chat.type == ChatType.PRIVATE:
         return await is_admin(message.from_user.id)
 
+    # da cambiare con bot_data["group_id"]
     elif message.chat.id == int(os.getenv("GROUP_ID")):
         return True
 
