@@ -184,10 +184,17 @@ async def get_user_gifts(user: int | str):
     # ricevuti
     if isinstance(user, int) or user.isnumeric():
         user = int(user)
-        query = f"SELECT * FROM gifts WHERE user_id = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
+        query = (f"SELECT * FROM gifts "
+                 f"WHERE user_id = $1 "
+                 f"AND gifted_by_id IS NOT NULL "
+                 f"AND cancelled = FALSE "
+                 f"ORDER BY gifted_at DESC")
     else:
         user = str(user)
-        query = f"SELECT * FROM gifts WHERE username = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
+        query = (f"SELECT * FROM gifts "
+                 f"WHERE username = $1 "
+                 f"AND gifted_by_id IS NOT NULL "
+                 f"AND cancelled = FALSE ORDER BY gifted_at DESC")
     try:
         gifts["received"] = await conn.fetch(query, user)
     except asyncpg.exceptions.PostgresError as err:

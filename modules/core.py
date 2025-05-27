@@ -378,55 +378,67 @@ async def request_gift(client: Client, message: Message):
             await safe_delete(message)
             return
 
-        added_id = await add_to_table(
-            table_name="gifts",
-            content={
-                "user_id": message.from_user.id,
-                "username": message.from_user.username if message.from_user.username else None,
-                "gifted_id": None,
-                "gifted_username": None,
-                "given_at": None
-            }
-        )
+    added_id = await add_to_table(
+        table_name="gifts",
+        content={
+            "user_id": message.from_user.id,
+            "username": message.from_user.username if message.from_user.username else None,
+            "gifted_id": None,
+            "gifted_username": None,
+            "given_at": None
+        }
+    )
 
-        await client.send_message(
-            chat_id=message.chat.id,
-            text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{added_id}")],
-                [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
-            ])
-        )
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{added_id}")],
+            [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+        ])
+    )
 
 
 async def accept_gift(client: Client, callback_query: CallbackQuery):
     global bot_data
     gift_id = callback_query.data.split("_")[-1]
+
     gift = await get_item_infos(table="gifts", identifier=gift_id)
+
     if gift is None:
         return
+
     if callback_query.data.startswith("accept_gift_for_"):
-        if (user_accepting := gift["user_id"]) == (gifting_id := int(callback_query.data.split("_")[-1])):
+        if (user_requesting := gift["user_id"]) == (gifting_by_id := int(callback_query.from_user.id)):
             return
         try:
             user_requesting = await client.get_chat_member(
                 chat_id=callback_query.message.chat.id,
-                user_id=gifting_id
+                user_id=user_requesting
             )
         except Exception as e:
             # l'utente è uscito nel frattempo, loggo l'errore e via
-            bot_logger.error(msg=f"Errore durante il reperimento delle informazioni dell'utente {gifting_id}: {e}")
+            bot_logger.error(msg=f"Errore durante il reperimento delle informazioni dell'utente {gifting_by_id}: {e}")
+            await send_message_with_close_button(
+                client=client,
+                message=None,
+                chat_id=callback_query.message.chat.id,
+                text=f"⚠️ C'è stato un errore durante il reperimento "
+                     f"delle informazioni dell'utente <code>{gifting_by_id}>/code>.\n\n"
+                     f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
+                     f"l'amministratore per assistenza."
+            )
             return
 
         keyboard = [
             [
                 InlineKeyboardButton(
                     text=f"✅ Confermo",
-                    callback_data=f"accepting_{user_accepting}_gift_{gift_id}_message_{callback_query.message.id}"
+                    callback_data=f"accepting_{callback_query.from_user.id}_gift_{gift_id}"
                 ),
                 InlineKeyboardButton(
                     text=f"❌ Annulla",
-                    callback_data=f"close_{user_accepting}"
+                    callback_data=f"abort_{callback_query.from_user.id}_{gift['id']}"
                 )
             ],
             [
@@ -447,16 +459,15 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             parse_mode=ParseMode.HTML
         )
 
-    elif "accepting" in callback_query.data and "gift" in callback_query.data and "message" in callback_query.data:
+        await safe_delete(callback_query.message)
+
+    elif "accepting" in callback_query.data and "gift" in callback_query.data:
         listed = callback_query.data.split("_")
         listed.pop(0)
         listed.pop(1)
-        listed.pop(2)
-        gift = await get_item_infos(table="gifts", identifier=int(listed[1]))
         listed = {
             "accepting": int(listed[0]),
-            "gift": gift["user_id"],
-            "message": int(listed[2])
+            "requesting": gift["user_id"]
         }
         if listed["accepting"] != callback_query.from_user.id:
             return
@@ -466,15 +477,24 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                 user_id=gift["user_id"]
             )
         except Exception as e:
-            bot_logger.error(f"Errore durante il reperimento delle informazioni dell'utente {gift["user_id"]}: {e}")
+            bot_logger.error(msg=f"Errore durante il reperimento delle informazioni dell'utente {gift["user_id"]}: {e}")
+            await send_message_with_close_button(
+                client=client,
+                message=None,
+                chat_id=callback_query.message.chat.id,
+                text=f"⚠️ C'è stato un errore durante il reperimento "
+                     f"delle informazioni dell'utente <code>{gift["user_id"]}>/code>.\n\n"
+                     f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
+                     f"l'amministratore per assistenza."
+            )
             return
 
         user_accepting = callback_query.from_user
 
         await execute_query_for_value(
             query=f"UPDATE gifts "
-                  f"SET gifted_by_id = {user_accepting.id}, "
-                  f"gifted_by_username = {user_accepting.username},"
+                  f"SET gifted_by_id = '{user_accepting.id}', "
+                  f"gifted_by_username = '{user_accepting.username}',"
                   f"gifted_at = now() "
                   f"WHERE id = {gift["id"]}",
             for_value=False
@@ -489,8 +509,9 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             ]
         ]
 
-        await client.send_message(
+        await client.edit_message_text(
             chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.id,
             text=f"✅ <b>Regalo Accettato</b>\n\n"
                  f"🔸 <b>{user_accepting.mention} ha accettato il regalo "
                  f"richiesto da {user_requesting.user.mention}</b>.",
@@ -498,14 +519,29 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             parse_mode=ParseMode.HTML
         )
 
+    elif callback_query.data.startswith("abort_"):
+        if callback_query.from_user.id != int(callback_query.data.split("_")[1]):
+            return
+
         try:
-            await client.delete_messages(
+            user_requesting = await client.get_chat_member(
                 chat_id=callback_query.message.chat.id,
-                message_ids=[listed["message"], callback_query.message.id]
+                user_id=gift["user_id"]
             )
         except Exception as e:
-            bot_logger.warning(f"Errore during the deletion of the message: {e}")
-            pass
+            bot_logger.error(f"Errore durante il reperimento delle informazioni dell'utente {gift["user_id"]}: {e}")
+            return
+
+        await client.edit_message_text(
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.id,
+            text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {user_requesting.user.mention} sta richiedendo "
+                 f"un <b>nuovo regalo</b>.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{gift['id']}")],
+                [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+            ])
+        )
 
 
 async def cancel_gift(client: Client, callback_query: CallbackQuery):

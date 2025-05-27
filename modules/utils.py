@@ -44,7 +44,7 @@ async def safety_check(client: Client, message: Message):
     if message.chat.type == ChatType.PRIVATE:
         return await is_admin(message.from_user.id)
 
-    elif message.chat.id == int(bot_data["group_id"]):
+    elif message.chat.id == int(os.getenv("GROUP_ID")):
         return True
 
     text = ("⚠️ <b>Attenzione</b>\n\n"
@@ -88,6 +88,6 @@ async def safety_check(client: Client, message: Message):
 
 async def delete_user_unaccepted_requests(user: str | int):
     if isinstance(user, int):
-        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_id IS NULL AND user_id = {user}", False)
+        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_by_id IS NULL AND user_id = {user}", False)
     else:
-        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_id IS NULL AND username = {user}", False)
+        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_by_id IS NULL AND username = {user}", False)

@@ -53,6 +53,20 @@ async def add_handlers(app: Client):
     )
 
     app.add_handler(
+        CallbackQueryHandler(
+            callback=core.accept_gift,
+            filters=filters.regex(r"^accepting_.*")
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.accept_gift,
+            filters=filters.regex(r"^abort_.*")
+        )
+    )
+
+    app.add_handler(
         MessageHandler(
             callback=core.request_gift,
             filters=filters.command(
