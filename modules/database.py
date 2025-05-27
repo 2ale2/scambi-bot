@@ -266,7 +266,7 @@ async def get_item_infos(table: str, identifier: int | str):
     else:
         if raw is None:
             db_logger.error(f"{identifier} non esistente in 'exchanges'")
-            raise asyncpg.exceptions.PostgresError(f"{identifier} non esistente in 'exchanges'")
+            return False
         else:
             return {key: raw[key] for key in dict(raw)}
     finally:

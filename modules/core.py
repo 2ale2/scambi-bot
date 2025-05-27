@@ -363,7 +363,7 @@ async def request_gift(client: Client, message: Message):
         last_given = gifts["given"][0]
 
         valid_received = [
-            dict(item) for item in gifts["received"] if dict(item)["given_at"] > dict(last_given)["given_at"]
+            dict(item) for item in gifts["received"] if dict(item)["gifted_at"] > dict(last_given)["gifted_at"]
         ]
 
         if len(valid_received) >= 2:
@@ -385,11 +385,12 @@ async def request_gift(client: Client, message: Message):
             "username": message.from_user.username if message.from_user.username else None,
             "gifted_id": None,
             "gifted_username": None,
-            "given_at": None
+            "gifted_at": None,
+            "request_link": None
         }
     )
 
-    await client.send_message(
+    message = await client.send_message(
         chat_id=message.chat.id,
         text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
         reply_markup=InlineKeyboardMarkup([
@@ -398,12 +399,48 @@ async def request_gift(client: Client, message: Message):
         ])
     )
 
+    await execute_query_for_value(
+        query=f"UPDATE gifts SET request_link = \'{message.link}\' WHERE id = {added_id}",
+        for_value=False
+    )
+
 
 async def accept_gift(client: Client, callback_query: CallbackQuery):
     global bot_data
     gift_id = callback_query.data.split("_")[-1]
 
     gift = await get_item_infos(table="gifts", identifier=gift_id)
+
+    if gift is False:
+        text = "ℹ️ Questa non è l'ultima richiesta fatta dall'utente."
+        user_requesting_id = None
+        query_message_entities = callback_query.message.entities
+        for el in query_message_entities:
+            if el.type.name == "TEXT_MENTION":
+                user_requesting_id = el.user.id
+                break
+        if user_requesting_id:
+            query = (f"SELECT request_link FROM gifts "
+                     f"WHERE user_id = \'{user_requesting_id}\' "
+                     f"AND cancelled = FALSE "
+                     f"ORDER BY id DESC LIMIT 1")
+            res = await execute_query_for_value(query=query, for_value=True)
+            if len(res) > 0:
+                text += (f" Usa il link qua sotto per raggiungere l'ultima richiesta fatta dallo stesso utente."
+                         f"\n\n🔸 <i>Ultima Richiesta</i>: <a href=\"{res}\">🔗 link</a>\n\n"
+                         f"🛟 Se il messaggio linkato non esiste o il link non porta a nessun messaggio, chiedi "
+                         f"all'utente di riformulare una richiesta.")
+        if "Ultima" not in text:
+            text += ("\n\n🛟 Cerca una richiesta più recente fatta dall'utente oppure chiedi all'utente di riformulare "
+                     "una richiesta.")
+        await send_message_with_close_button(
+            client=client,
+            message=None,
+            chat_id=callback_query.message.chat.id,
+            text=text
+        )
+        await safe_delete(callback_query.message)
+        return
 
     if gift is None:
         return
@@ -493,8 +530,8 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
 
         await execute_query_for_value(
             query=f"UPDATE gifts "
-                  f"SET gifted_by_id = '{user_accepting.id}', "
-                  f"gifted_by_username = '{user_accepting.username}',"
+                  f"SET gifted_by_id = {user_accepting.id}, "
+                  f"gifted_by_username = {('\'' + user_accepting.username + '\'') if user_accepting.username else 'NULL'}, "
                   f"gifted_at = now() "
                   f"WHERE id = {gift["id"]}",
             for_value=False
@@ -502,7 +539,7 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
 
         keyboard = [
             [
-                InlineKeyboardButton("🖍 Annulla Conferma", callback_data=f"cancel_gift_{gift['id']}")
+                InlineKeyboardButton("🖍 Annulla Regalo", callback_data=f"cancel_gift_{gift['id']}")
             ],
             [
                 InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
@@ -553,20 +590,21 @@ async def cancel_gift(client: Client, callback_query: CallbackQuery):
 
     sender = await client.get_chat_member(
         chat_id=callback_query.message.chat.id,
-        user_id=gift_infos["username"] if gift_infos["username"] else gift_infos["user_id"]
+        user_id=("@" + gift_infos["username"]) if gift_infos["username"] else int(gift_infos["user_id"])
     )
 
     recipient = await client.get_chat_member(
         chat_id=callback_query.message.chat.id,
-        user_id=gift_infos["gifted_username"] if gift_infos["gifted_username"] else gift_infos["gifted_id"]
+        user_id=("@" + gift_infos["gifted_by_username"]) if gift_infos["gifted_by_username"] else int(gift_infos["gifted_by_id"])
     )
 
     await set_as_cancelled(table="gifts", identifier=gift_id)
-    await send_message_with_close_button(
-        client=client,
-        message=None,
+    await client.send_message(
         chat_id=callback_query.message.chat.id,
-        text=f"🌪 Regalo da {sender.user.mention} a {recipient.user.mention} <b>cancellato</b> correttamente."
+        text=f"🌪 Regalo da {sender.user.mention} a {recipient.user.mention} <b>cancellato</b> correttamente.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+        ])
     )
 
     await safe_delete(callback_query.message)
