@@ -337,11 +337,19 @@ async def exchange(client: Client, message: Message):
 
 async def request_gift(client: Client, message: Message):
     global bot_data
+
     if not await safety_check(client, message):
-        await safe_delete(message)
         return
 
-    await safe_delete(message)
+    if message.caption is None:
+        text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
+        await send_message_with_close_button(client=client, message=message, text=text)
+        return
+
+    if not message.media.PHOTO:
+        text = "⚠️ Puoi allegare solo uno <b>screenshot</b>."
+        await send_message_with_close_button(client=client, message=message, text=text)
+        return
 
     await delete_user_unaccepted_requests(user=message.from_user.id)
 
@@ -378,6 +386,9 @@ async def request_gift(client: Client, message: Message):
             await safe_delete(message)
             return
 
+    await message.forward(int(os.getenv("DEPOSIT_CHAT_ID")))
+    await safe_delete(message)
+
     added_id = await add_to_table(
         table_name="gifts",
         content={
@@ -390,9 +401,10 @@ async def request_gift(client: Client, message: Message):
         }
     )
 
-    message = await client.send_message(
+    message = await client.send_photo(
+        photo=message.photo.file_id,
         chat_id=message.chat.id,
-        text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
+        caption=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{added_id}")],
             [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
@@ -486,9 +498,10 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             ]
         ]
 
-        await client.send_message(
+        await client.send_photo(
+            photo=callback_query.message.photo.file_id,
             chat_id=callback_query.message.chat.id,
-            text=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention}, stai accettando la richiesta "
+            caption=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention}, stai accettando la richiesta "
                  f"di un nuovo regalo da {user_requesting.user.mention}. "
                  f"<b>Se confermi, ti assumi il dovere di fare questo regalo</b>.\n\n"
                  f"🔸 Confermi?",
@@ -546,10 +559,10 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             ]
         ]
 
-        await client.edit_message_text(
+        await client.edit_message_caption(
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.id,
-            text=f"✅ <b>Regalo Accettato</b>\n\n"
+            caption=f"✅ <b>Regalo Accettato</b>\n\n"
                  f"🔸 <b>{user_accepting.mention} ha accettato il regalo "
                  f"richiesto da {user_requesting.user.mention}</b>.",
             reply_markup=InlineKeyboardMarkup(keyboard),
