@@ -4,9 +4,10 @@ import os
 from pyrogram import Client
 from pyrogram.enums import ChatType
 from pyrogram.errors import MessageDeleteForbidden
-from pyrogram.types import Message, ChatMember
+from pyrogram.types import Message, ChatMember, InlineKeyboardMarkup, InlineKeyboardButton
 from loggers import db_logger, bot_logger
 from globals import bot_data
+from modules.database import execute_query_for_value, connect_to_database,get_user_gifts
 
 
 async def save_persistence(json_dict: dict):
@@ -43,7 +44,8 @@ async def safety_check(client: Client, message: Message):
     if message.chat.type == ChatType.PRIVATE:
         return await is_admin(message.from_user.id)
 
-    elif message.chat.id == int(bot_data["group_id"]):
+    # da cambiare con bot_data["group_id"]
+    elif message.chat.id == int(os.getenv("GROUP_ID")):
         return True
 
     text = ("⚠️ <b>Attenzione</b>\n\n"
@@ -65,7 +67,7 @@ async def safety_check(client: Client, message: Message):
         text += "❌ Non è stato possibile uscire da tale chat: " + str(e)
     try:
         sender = await client.get_chat_member(
-            chat_id=bot_data["group_id"],
+            chat_id=os.getenv("GROUP_ID"),
             user_id=message.from_user.id
         )
         if not isinstance(sender, ChatMember):
@@ -85,16 +87,27 @@ async def safety_check(client: Client, message: Message):
     return False
 
 
-async def connect_to_database():
-    try:
-        conn = await asyncpg.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASS"),
-            database=os.getenv("DB_NAME")
-        )
-    except asyncpg.exceptions.PostgresError as err:
-        db_logger.error(err)
-        raise
+async def delete_user_unaccepted_requests(user: str | int):
+    if isinstance(user, int):
+        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_by_id IS NULL AND user_id = {user}", False)
     else:
-        return conn
+        await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_by_id IS NULL AND username = {user}", False)
+
+
+async def check_request_requirements(user_id: int):
+    gifts = await get_user_gifts(user=user_id)
+
+    if len(gifts["given"]) == 0 and len(gifts["received"]) >= 2:
+        return False
+
+    if len(gifts["given"]) > 0:
+        last_given = gifts["given"][0]
+
+        valid_received = [
+            dict(item) for item in gifts["received"] if dict(item)["gifted_at"] > dict(last_given)["gifted_at"]
+        ]
+
+        if len(valid_received) >= 2:
+            return False
+
+    return True

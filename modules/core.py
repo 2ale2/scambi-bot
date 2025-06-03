@@ -1,6 +1,7 @@
 import os
 import re
 import locale
+
 from pyrogram import Client
 from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
@@ -9,10 +10,11 @@ from globals import bot_data, soglia
 from datetime import datetime
 import pytz
 
-from modules.database import add_to_table, get_exchange_infos, decrease_user_points, set_exchange_cancelled, \
-    get_user_exchanges, get_user_points, retrieve_user
+from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
+    get_user_exchanges, get_user_points, retrieve_user, get_user_gifts, execute_query_for_value
 from modules.loggers import db_logger, bot_logger
-from modules.utils import save_persistence, safe_delete, is_admin, safety_check
+from modules.utils import save_persistence, safe_delete, is_admin, safety_check, delete_user_unaccepted_requests, \
+    check_request_requirements
 
 
 async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
@@ -77,30 +79,77 @@ async def start(client: Client, message: Message):
     )
 
 
-async def send_confirmation_request(message: Message, user: str):
+async def send_confirmation_request(client: Client, message: Message, user: str, gift_bool=False):
     global bot_data
     sender = message.from_user.id
-    keyboard = [
-        [
-            InlineKeyboardButton("🖋 Conferma Scambio",
-                                 callback_data=f"confirm_exchange_{sender}_{user.replace('@', '')}")
-        ],
-        [
-            InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"close_admin_{user.replace('@', '')}")
+    if not gift_bool:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="🖋 Conferma Scambio",
+                    callback_data=f"confirm_exchange_{sender}_{user.replace('@', '')}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🖍 Annulla Scambio",
+                    callback_data=f"close_admin_{user.replace('@', '')}"
+                )
+            ]
         ]
-    ]
+        text = (f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo scambio <u>necessita di conferma</u> da parte dell'utente "
+                f"{user}.")
+    else:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="🖋 Conferma Regalo",
+                    callback_data=f"confirm_gift_{sender}_{user.replace('@', '')}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🖍 Annulla Regalo",
+                    callback_data=f"close_admin_gift_{user.replace('@', '')}"
+                )
+            ]
+        ]
+        text = (f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo regalo <u>necessita di conferma</u> da parte dell'utente "
+                f"{user}.")
+
+    if "confirmations" not in bot_data:
+        bot_data["confirmations"] = {}
+
+    if (user.replace("@", "") in bot_data["confirmations"] and
+            "gift" in bot_data["confirmations"][user.replace("@", "")]):
+        try:
+            confirm_message = await client.get_messages(
+                chat_id=message.chat.id,
+                message_ids=bot_data["confirmations"][user.replace("@", "")]["gift"].id
+            )
+        except Exception:
+            pass
+        else:
+            await confirm_message.reply_text(
+                text=f"⚠️ L'utente {'@' + user.replace("@", "")} deve <b>ancora confermare un'altro regalo</b>.\n\n"
+                     f"🆘 Se il messaggio della richiesta di conferma è stato rimosso o non produce alcun effetto, "
+                     f"chiedi ad un admin di cancellare il messaggio cui sto rispondendo, poi riformula la "
+                     f"richiesta usando il comando /gift.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🚮 Chiudi", callback_data=f"close")]])
+            )
+            return
+
     try:
         await message.reply_text(
-            text=f"⏳ <b>Attesa Conferma</b>\n\n🔹️Questo scambio <u>necessita di conferma</u> da parte dell'utente "
-                 f"{user}.",
+            text=text,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
         bot_logger.error(f"error sending confirmation request: {e}")
         return
-    if "confirmations" not in bot_data:
-        bot_data["confirmations"] = {}
-    bot_data["confirmations"][user.replace("@", "")] = message
+
+    bot_data["confirmations"][user.replace("@", "")] = {"gift": message}
     return
 
 
@@ -287,6 +336,298 @@ async def exchange(client: Client, message: Message):
     await safe_delete(message)
 
 
+async def request_gift(client: Client, message: Message):
+    global bot_data
+
+    if not await safety_check(client, message):
+        return
+
+    if message.caption is None:
+        text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
+        await send_message_with_close_button(client=client, message=message, text=text)
+        return
+
+    if not message.media.PHOTO:
+        text = "⚠️ Puoi allegare solo uno <b>screenshot</b>."
+        await send_message_with_close_button(client=client, message=message, text=text)
+        return
+
+    await delete_user_unaccepted_requests(user=message.from_user.id)
+
+    if not await check_request_requirements(user_id=message.from_user.id):
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"⚠️ <b>Warning</b>\n\n🔸 <b>{message.from_user.mention} ha già ricevuto 2 regali</b>. "
+                 "Per poterne chiedere un altro, deve prima farne almeno uno.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+            ])
+        )
+        await safe_delete(message)
+        return
+
+    await message.forward(int(os.getenv("DEPOSIT_CHAT_ID")))
+    await safe_delete(message)
+
+    added_id = await add_to_table(
+        table_name="gifts",
+        content={
+            "user_id": message.from_user.id,
+            "username": message.from_user.username if message.from_user.username else None,
+            "gifted_id": None,
+            "gifted_username": None,
+            "gifted_at": None,
+            "request_link": None
+        }
+    )
+
+    message = await client.send_photo(
+        photo=message.photo.file_id,
+        chat_id=message.chat.id,
+        caption=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {message.from_user.mention} sta richiedendo un <b>nuovo regalo</b>.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{added_id}")],
+            [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+        ])
+    )
+
+    await execute_query_for_value(
+        query=f"UPDATE gifts SET request_link = \'{message.link}\' WHERE id = {added_id}",
+        for_value=False
+    )
+
+
+async def accept_gift(client: Client, callback_query: CallbackQuery):
+    global bot_data
+    gift_id = callback_query.data.split("_")[-1]
+
+    gift = await get_item_infos(table="gifts", identifier=gift_id)
+
+    if gift is False:
+        text = "ℹ️ Questa non è l'ultima richiesta fatta dall'utente."
+        user_requesting_id = None
+        query_message_entities = callback_query.message.entities
+        if query_message_entities is None:
+            await safe_delete(callback_query.message)
+            text = "⚠️ La richiesta con cui hai interagito è rimasta inattiva e non è più disponibile."
+            await send_message_with_close_button(
+                client=client,
+                message=None,
+                text=text,
+                chat_id=callback_query.message.chat.id
+            )
+            return
+        for el in query_message_entities:
+            if el.type.name == "TEXT_MENTION":
+                user_requesting_id = el.user.id
+                break
+        if user_requesting_id:
+            query = (f"SELECT request_link FROM gifts "
+                     f"WHERE user_id = \'{user_requesting_id}\' "
+                     f"AND cancelled = FALSE "
+                     f"ORDER BY id DESC LIMIT 1")
+            res = await execute_query_for_value(query=query, for_value=True)
+            if len(res) > 0:
+                text += (f" Usa il link qua sotto per raggiungere l'ultima richiesta fatta dallo stesso utente."
+                         f"\n\n🔸 <i>Ultima Richiesta</i>: <a href=\"{res}\">🔗 link</a>\n\n"
+                         f"🛟 Se il messaggio linkato non esiste o il link non porta a nessun messaggio, chiedi "
+                         f"all'utente di riformulare una richiesta.")
+        if "Ultima" not in text:
+            text += ("\n\n🛟 Cerca una richiesta più recente fatta dall'utente oppure chiedi all'utente di riformulare "
+                     "una richiesta.")
+        await send_message_with_close_button(
+            client=client,
+            message=None,
+            chat_id=callback_query.message.chat.id,
+            text=text
+        )
+        await safe_delete(callback_query.message)
+        return
+
+    if gift is None:
+        return
+
+    if callback_query.data.startswith("accept_gift_for_"):
+        if (user_requesting := gift["user_id"]) == (gifting_by_id := int(callback_query.from_user.id)):
+            return
+        try:
+            user_requesting = await client.get_chat_member(
+                chat_id=callback_query.message.chat.id,
+                user_id=user_requesting
+            )
+        except Exception as e:
+            # l'utente è uscito nel frattempo, loggo l'errore e via
+            bot_logger.error(msg=f"Errore durante il reperimento delle informazioni dell'utente {gifting_by_id}: {e}")
+            await send_message_with_close_button(
+                client=client,
+                message=None,
+                chat_id=callback_query.message.chat.id,
+                text=f"⚠️ C'è stato un errore durante il reperimento "
+                     f"delle informazioni dell'utente <code>{gifting_by_id}>/code>.\n\n"
+                     f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
+                     f"l'amministratore per assistenza."
+            )
+            return
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text=f"✅ Confermo",
+                    callback_data=f"accepting_{callback_query.from_user.id}_gift_{gift_id}"
+                ),
+                InlineKeyboardButton(
+                    text=f"❌ Annulla",
+                    callback_data=f"abort_{callback_query.from_user.id}_{gift['id']}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"🚮 Cancella – Solo Admin",
+                    callback_data=f"close_admin"
+                )
+            ]
+        ]
+
+        await client.send_photo(
+            photo=callback_query.message.photo.file_id,
+            chat_id=callback_query.message.chat.id,
+            caption=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention}, stai accettando la richiesta "
+                 f"di un nuovo regalo da {user_requesting.user.mention}. "
+                 f"<b>Se confermi, ti assumi il dovere di fare questo regalo</b>.\n\n"
+                 f"🔸 Confermi?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML
+        )
+
+        await safe_delete(callback_query.message)
+
+    elif "accepting" in callback_query.data and "gift" in callback_query.data:
+        listed = callback_query.data.split("_")
+        listed.pop(0)
+        listed.pop(1)
+        listed = {
+            "accepting": int(listed[0]),
+            "requesting": gift["user_id"]
+        }
+
+        try:
+            user_requesting = await client.get_chat_member(
+                chat_id=callback_query.message.chat.id,
+                user_id=gift["user_id"]
+            )
+        except Exception as e:
+            bot_logger.error(msg=f"Errore durante il reperimento delle informazioni dell'utente {gift["user_id"]}: {e}")
+            await send_message_with_close_button(
+                client=client,
+                message=None,
+                chat_id=callback_query.message.chat.id,
+                text=f"⚠️ C'è stato un errore durante il reperimento "
+                     f"delle informazioni dell'utente <code>{gift["user_id"]}>/code>.\n\n"
+                     f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
+                     f"l'amministratore per assistenza."
+            )
+            return
+
+        if not await check_request_requirements(user_id=listed["requesting"]):
+            await client.send_message(
+                chat_id=callback_query.message.chat.id,
+                text=f"⚠️ <b>Warning</b>\n\n🔸 Non puoi accettare questo regalo perché "
+                     f"nel frattempo <b>{user_requesting.user.mention} ha raggiunto il limite di 2 regali</b>. "
+                     "Per poterne chiedere un altro, deve prima farne almeno uno.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+                ])
+            )
+            await safe_delete(callback_query.message)
+            return
+
+        if listed["accepting"] != callback_query.from_user.id:
+            return
+
+        user_accepting = callback_query.from_user
+
+        await execute_query_for_value(
+            query=f"UPDATE gifts "
+                  f"SET gifted_by_id = {user_accepting.id}, "
+                  f"gifted_by_username = {('\'' + user_accepting.username + '\'') if user_accepting.username else 'NULL'}, "
+                  f"gifted_at = now() "
+                  f"WHERE id = {gift["id"]}",
+            for_value=False
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton("🖍 Annulla Regalo", callback_data=f"cancel_gift_{gift['id']}")
+            ],
+            [
+                InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
+            ]
+        ]
+
+        await client.edit_message_caption(
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.id,
+            caption=f"✅ <b>Regalo Accettato</b>\n\n"
+                 f"🔸 <b>{user_accepting.mention} ha accettato il regalo "
+                 f"richiesto da {user_requesting.user.mention}</b>.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML
+        )
+
+    elif callback_query.data.startswith("abort_"):
+        if callback_query.from_user.id != int(callback_query.data.split("_")[1]):
+            return
+
+        try:
+            user_requesting = await client.get_chat_member(
+                chat_id=callback_query.message.chat.id,
+                user_id=gift["user_id"]
+            )
+        except Exception as e:
+            bot_logger.error(f"Errore durante il reperimento delle informazioni dell'utente {gift["user_id"]}: {e}")
+            return
+
+        await client.edit_message_text(
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.id,
+            text=f"🃏 <b>Richiesta Regalo</b>\n\n🔹 {user_requesting.user.mention} sta richiedendo "
+                 f"un <b>nuovo regalo</b>.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{gift['id']}")],
+                [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+            ])
+        )
+
+
+async def cancel_gift(client: Client, callback_query: CallbackQuery):
+    if not await is_admin(callback_query.from_user.id):
+        return
+
+    gift_id = callback_query.data.split("_")[-1]
+    gift_infos = await get_item_infos(table="gifts", identifier=gift_id)
+
+    sender = await client.get_chat_member(
+        chat_id=callback_query.message.chat.id,
+        user_id=("@" + gift_infos["username"]) if gift_infos["username"] else int(gift_infos["user_id"])
+    )
+
+    recipient = await client.get_chat_member(
+        chat_id=callback_query.message.chat.id,
+        user_id=("@" + gift_infos["gifted_by_username"]) if gift_infos["gifted_by_username"] else int(gift_infos["gifted_by_id"])
+    )
+
+    await set_as_cancelled(table="gifts", identifier=gift_id)
+    await client.send_message(
+        chat_id=callback_query.message.chat.id,
+        text=f"🌪 Regalo da {sender.user.mention} a {recipient.user.mention} <b>cancellato</b> correttamente.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+        ])
+    )
+
+    await safe_delete(callback_query.message)
+
+
 async def confirm_exchange(client: Client, callback_query: CallbackQuery):
     if (callback_query.from_user.username is None or
             callback_query.from_user.username != callback_query.data.split("_", maxsplit=3)[-1]):
@@ -413,7 +754,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):
     if not await is_admin(callback_query.from_user.id):
         return
-    exchange_infos = await get_exchange_infos(callback_query.data.split("_")[-1])
+    exchange_infos = await get_item_infos(table="exchanges", identifier=callback_query.data.split("_")[-1])
     points_sender = await decrease_user_points(exchange_infos["member_1"])
     points_recipient = await decrease_user_points(exchange_infos["member_2"])
 
@@ -445,7 +786,7 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
         user_id=exchange_infos["member_2"]
     )
 
-    await set_exchange_cancelled(exchange_infos["id"])
+    await set_as_cancelled(table="exchanges", identifier=exchange_infos["id"])
 
     await send_message_with_close_button(
         client=client,
@@ -528,7 +869,7 @@ async def user_exchanges(client: Client, message: Message):
     except Exception:
         tagged = None
 
-    res = await get_user_exchanges(str(tagged.user.id) if tagged is not None else str(user).removeprefix('@'))
+    res = await get_user_exchanges(user=str(tagged.user.id) if tagged is not None else str(user).removeprefix('@'))
 
     if res == -1:
         await send_message_with_close_button(
@@ -820,11 +1161,18 @@ async def close_message(client: Client, callback_query: CallbackQuery):
         if not await is_admin(callback_query.from_user.id):
             return
         if user := (callback_query.data.split("_", maxsplit=3)[-1]):
-            if user in bot_data["confirmations"]:
+            if "confirmations" in bot_data and user in bot_data["confirmations"]:
                 del bot_data["confirmations"][user]
         await safe_delete(callback_query.message)
     elif callback_query.data.startswith("confirm_and_close"):
         if await is_admin(callback_query.from_user.id):
             await safe_delete(callback_query.message)
+
+    list_el = callback_query.data.split("_")
+
+    if list_el[-1].isnumeric():
+        if callback_query.from_user.id == int(list_el[-1]):
+            await safe_delete(callback_query.message)
+
     else:
         await safe_delete(callback_query.message)

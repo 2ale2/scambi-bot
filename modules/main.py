@@ -1,7 +1,8 @@
 import os
 import logging
 import json
-from utils import save_persistence, connect_to_database
+from utils import save_persistence
+from modules.database import connect_to_database
 import core
 from loggers import db_logger, bot_logger
 from database import is_table_empty
@@ -46,6 +47,37 @@ async def add_handlers(app: Client):
 
     app.add_handler(
         CallbackQueryHandler(
+            callback=core.accept_gift,
+            filters=filters.regex(r"^accept_gift_for.*")
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.accept_gift,
+            filters=filters.regex(r"^accepting_.*")
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.accept_gift,
+            filters=filters.regex(r"^abort_.*")
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            callback=core.request_gift,
+            filters=filters.command(
+                commands="request",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
             callback=core.close_message,
             filters=filters.regex(r"^close.*")
         )
@@ -55,6 +87,13 @@ async def add_handlers(app: Client):
         CallbackQueryHandler(
             callback=core.cancel_exchange,
             filters=filters.regex(r"^cancel_exchange.*")
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            callback=core.cancel_gift,
+            filters=filters.regex(r"^cancel_gift.*")
         )
     )
 
@@ -127,8 +166,8 @@ async def post_init(app: Client):
         try:
             await app.get_chat_member(int(bot_data["group_id"]), "me")
         except pyrogram.errors.RPCError:
-            bot_logger.error("Group ID not actual! Change it in the .env file.")
-            exit(1)
+            bot_logger.warning(f"Group ID {bot_data['group_id']} not actual! Trigger an update in the new group right "
+                               f"now, then restart the bot to make it notice the new chat.")
         else:
             bot_logger.info("Group ID was correct. Editing DB...")
             for el in ["owner_id", "admin_id"]:
