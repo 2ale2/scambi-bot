@@ -13,7 +13,8 @@ import pytz
 from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
     get_user_exchanges, get_user_points, retrieve_user, get_user_gifts, execute_query_for_value
 from modules.loggers import db_logger, bot_logger
-from modules.utils import save_persistence, safe_delete, is_admin, safety_check, delete_user_unaccepted_requests
+from modules.utils import save_persistence, safe_delete, is_admin, safety_check, delete_user_unaccepted_requests, \
+    check_request_requirements
 
 
 async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
@@ -353,9 +354,7 @@ async def request_gift(client: Client, message: Message):
 
     await delete_user_unaccepted_requests(user=message.from_user.id)
 
-    gifts = await get_user_gifts(user=message.from_user.id)
-
-    if len(gifts["given"]) == 0 and len(gifts["received"]) >= 2:
+    if not await check_request_requirements(user_id=message.from_user.id):
         await client.send_message(
             chat_id=message.chat.id,
             text=f"⚠️ <b>Warning</b>\n\n🔸 <b>{message.from_user.mention} ha già ricevuto 2 regali</b>. "
@@ -366,25 +365,6 @@ async def request_gift(client: Client, message: Message):
         )
         await safe_delete(message)
         return
-
-    if len(gifts["given"]) > 0:
-        last_given = gifts["given"][0]
-
-        valid_received = [
-            dict(item) for item in gifts["received"] if dict(item)["gifted_at"] > dict(last_given)["gifted_at"]
-        ]
-
-        if len(valid_received) >= 2:
-            await client.send_message(
-                chat_id=message.chat.id,
-                text=f"⚠️ <b>Warning</b>\n\n🔸 <b>{message.from_user.mention} ha già ricevuto 2 regali da quando ha "
-                     f"fatto l'ultimo regalo</b>. Per poterne chiedere un altro, deve prima farne almeno uno.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
-                ])
-            )
-            await safe_delete(message)
-            return
 
     await message.forward(int(os.getenv("DEPOSIT_CHAT_ID")))
     await safe_delete(message)
@@ -427,6 +407,16 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
         text = "ℹ️ Questa non è l'ultima richiesta fatta dall'utente."
         user_requesting_id = None
         query_message_entities = callback_query.message.entities
+        if query_message_entities is None:
+            await safe_delete(callback_query.message)
+            text = "⚠️ La richiesta con cui hai interagito è rimasta inattiva e non è più disponibile."
+            await send_message_with_close_button(
+                client=client,
+                message=None,
+                text=text,
+                chat_id=callback_query.message.chat.id
+            )
+            return
         for el in query_message_entities:
             if el.type.name == "TEXT_MENTION":
                 user_requesting_id = el.user.id
@@ -519,8 +509,7 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             "accepting": int(listed[0]),
             "requesting": gift["user_id"]
         }
-        if listed["accepting"] != callback_query.from_user.id:
-            return
+
         try:
             user_requesting = await client.get_chat_member(
                 chat_id=callback_query.message.chat.id,
@@ -537,6 +526,22 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                      f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
                      f"l'amministratore per assistenza."
             )
+            return
+
+        if not await check_request_requirements(user_id=listed["requesting"]):
+            await client.send_message(
+                chat_id=callback_query.message.chat.id,
+                text=f"⚠️ <b>Warning</b>\n\n🔸 Non puoi accettare questo regalo perché "
+                     f"nel frattempo <b>{user_requesting.user.mention} ha raggiunto il limite di 2 regali</b>. "
+                     "Per poterne chiedere un altro, deve prima farne almeno uno.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
+                ])
+            )
+            await safe_delete(callback_query.message)
+            return
+
+        if listed["accepting"] != callback_query.from_user.id:
             return
 
         user_accepting = callback_query.from_user

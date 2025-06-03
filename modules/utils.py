@@ -4,10 +4,10 @@ import os
 from pyrogram import Client
 from pyrogram.enums import ChatType
 from pyrogram.errors import MessageDeleteForbidden
-from pyrogram.types import Message, ChatMember
+from pyrogram.types import Message, ChatMember, InlineKeyboardMarkup, InlineKeyboardButton
 from loggers import db_logger, bot_logger
 from globals import bot_data
-from modules.database import execute_query_for_value, connect_to_database
+from modules.database import execute_query_for_value, connect_to_database,get_user_gifts
 
 
 async def save_persistence(json_dict: dict):
@@ -92,3 +92,22 @@ async def delete_user_unaccepted_requests(user: str | int):
         await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_by_id IS NULL AND user_id = {user}", False)
     else:
         await execute_query_for_value(f"DELETE FROM gifts WHERE gifted_by_id IS NULL AND username = {user}", False)
+
+
+async def check_request_requirements(user_id: int):
+    gifts = await get_user_gifts(user=user_id)
+
+    if len(gifts["given"]) == 0 and len(gifts["received"]) >= 2:
+        return False
+
+    if len(gifts["given"]) > 0:
+        last_given = gifts["given"][0]
+
+        valid_received = [
+            dict(item) for item in gifts["received"] if dict(item)["gifted_at"] > dict(last_given)["gifted_at"]
+        ]
+
+        if len(valid_received) >= 2:
+            return False
+
+    return True
