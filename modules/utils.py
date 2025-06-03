@@ -45,7 +45,7 @@ async def safety_check(client: Client, message: Message):
         return await is_admin(message.from_user.id)
 
     # da cambiare con bot_data["group_id"]
-    elif message.chat.id == int(os.getenv("GROUP_ID")):
+    elif message.chat.id == int(bot_data["group_id"]):
         return True
 
     text = ("⚠️ <b>Attenzione</b>\n\n"
@@ -67,7 +67,7 @@ async def safety_check(client: Client, message: Message):
         text += "❌ Non è stato possibile uscire da tale chat: " + str(e)
     try:
         sender = await client.get_chat_member(
-            chat_id=os.getenv("GROUP_ID"),
+            chat_id=bot_data["group_id"],
             user_id=message.from_user.id
         )
         if not isinstance(sender, ChatMember):
