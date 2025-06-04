@@ -5,7 +5,7 @@ import json
 import re
 
 from loggers import db_logger, bot_logger
-from globals import soglia
+from globals import SOGLIA
 
 
 async def is_username_valid(username: str):
@@ -82,7 +82,7 @@ async def add_to_table(table_name: str, content: dict):
         if table_name == "main_table":
             query += (
                 f"ON CONFLICT (user_id) DO UPDATE SET "
-                f"points = CASE WHEN {table_name}.points + 1 >= {str(int(soglia))} THEN 0 ELSE {table_name}.points + 1 END, "
+                f"points = CASE WHEN {table_name}.points + 1 >= {str(int(SOGLIA))} THEN 0 ELSE {table_name}.points + 1 END, "
                 f"total = {table_name}.total + 1,"
                 f"username = EXCLUDED.username "
                 f"RETURNING points"

@@ -6,7 +6,7 @@ from pyrogram import Client
 from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 from pyrogram.errors import RPCError
-from globals import bot_data, soglia
+from globals import bot_data, SOGLIA, THREAD_ID, THREAD_LINK
 from datetime import datetime
 import pytz
 
@@ -67,7 +67,7 @@ async def start(client: Client, message: Message):
                 f"🔹 Ecco una lista dei comandi:\n\n"
                 f"\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato"
                 f".\n\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
-                f"🏆 <b>Soglia Punti Attuale</b>: <code>{soglia}</code>\n\n"
+                f"🏆 <b>Soglia Punti Attuale</b>: <code>{SOGLIA}</code>\n\n"
                 f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>\n\n"
                 f"<i>made by @Mera86 e @prof_layton</i>")
 
@@ -287,7 +287,7 @@ async def exchange(client: Client, message: Message):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {sender.mention} ha ottenuto {soglia} punti."
+            text=f"🎯 L'utente {sender.mention} ha ottenuto {SOGLIA} punti."
         )
         bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
@@ -299,20 +299,20 @@ async def exchange(client: Client, message: Message):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {recipient.user.mention} ha ottenuto {soglia} punti."
+            text=f"🎯 L'utente {recipient.user.mention} ha ottenuto {SOGLIA} punti."
         )
         bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
-        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {soglia} (+1)\n"
+        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {SOGLIA} (+1)\n"
     else:
         text += (f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender}"
                  f" (+1)\n")
 
     if points_recipient == 0:
-        text += f"🎁 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → {soglia} (+1)\n"
+        text += f"🎁 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → {SOGLIA} (+1)\n"
     else:
         text += (f"🔹 <u><i>Recipient</i></u> {recipient.user.mention} (<code>{recipient.user.id}</code>) → "
                  f"{points_recipient} (+1)\n")
@@ -339,7 +339,18 @@ async def exchange(client: Client, message: Message):
 async def request_gift(client: Client, message: Message):
     global bot_data
 
+    if message.message_thread_id is None or message.message_thread_id != THREAD_ID:
+        await safe_delete(message)
+        await client.send_message(
+            chat_id=message.chat.id,
+            text = f"ℹ️ Ciao {message.from_user.mention}. Questo non è il topic adibito alla richiesta di regali.\n\n"
+                   f"🧭 <b>Per poter formulare una richiesta, recati nel <a href=\"{THREAD_LINK}\">topic corretto</a></b>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     if not await safety_check(client, message):
+        await safe_delete(message)
         return
 
     if message.caption is None:
@@ -349,7 +360,7 @@ async def request_gift(client: Client, message: Message):
 
     if not message.media.PHOTO:
         text = "⚠️ Puoi allegare solo uno <b>screenshot</b>."
-        await send_message_with_close_button(client=client, message=message, text=text)
+        await send_message_with_close_button(client=client, message=message, text=text, thread_id=THREAD_ID)
         return
 
     await delete_user_unaccepted_requests(user=message.from_user.id)
@@ -361,7 +372,8 @@ async def request_gift(client: Client, message: Message):
                  "Per poterne chiedere un altro, deve prima farne almeno uno.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
-            ])
+            ]),
+            message_thread_id=THREAD_ID
         )
         await safe_delete(message)
         return
@@ -388,7 +400,8 @@ async def request_gift(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{added_id}")],
             [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
-        ])
+        ]),
+        message_thread_id=THREAD_ID
     )
 
     await execute_query_for_value(
@@ -439,7 +452,8 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             client=client,
             message=None,
             chat_id=callback_query.message.chat.id,
-            text=text
+            text=text,
+            thread_id=THREAD_ID
         )
         await safe_delete(callback_query.message)
         return
@@ -465,7 +479,8 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                 text=f"⚠️ C'è stato un errore durante il reperimento "
                      f"delle informazioni dell'utente <code>{gifting_by_id}>/code>.\n\n"
                      f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
-                     f"l'amministratore per assistenza."
+                     f"l'amministratore per assistenza.",
+                thread_id=THREAD_ID
             )
             return
 
@@ -496,7 +511,8 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                  f"<b>Se confermi, ti assumi il dovere di fare questo regalo</b>.\n\n"
                  f"🔸 Confermi?",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.HTML
+            parse_mode=ParseMode.HTML,
+            message_thread_id=THREAD_ID
         )
 
         await safe_delete(callback_query.message)
@@ -524,7 +540,8 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                 text=f"⚠️ C'è stato un errore durante il reperimento "
                      f"delle informazioni dell'utente <code>{gift["user_id"]}>/code>.\n\n"
                      f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
-                     f"l'amministratore per assistenza."
+                     f"l'amministratore per assistenza.",
+                thread_id=THREAD_ID
             )
             return
 
@@ -536,7 +553,8 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                      "Per poterne chiedere un altro, deve prima farne almeno uno.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
-                ])
+                ]),
+                message_thread_id=THREAD_ID
             )
             await safe_delete(callback_query.message)
             return
@@ -622,7 +640,8 @@ async def cancel_gift(client: Client, callback_query: CallbackQuery):
         text=f"🌪 Regalo da {sender.user.mention} a {recipient.user.mention} <b>cancellato</b> correttamente.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
-        ])
+        ]),
+        message_thread_id=THREAD_ID
     )
 
     await safe_delete(callback_query.message)
@@ -704,7 +723,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {sender.mention} ha ottenuto {soglia} punti."
+            text=f"🎯 L'utente {sender.mention} ha ottenuto {SOGLIA} punti."
         )
         bot_data[int(added_id)]["member_1_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
@@ -716,20 +735,20 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
             client=client,
             chat_id=int(os.getenv("NOTIFICATION_CHAT_ID")),
             message=message,
-            text=f"🎯 L'utente {recipient.mention} ha ottenuto {soglia} punti."
+            text=f"🎯 L'utente {recipient.mention} ha ottenuto {SOGLIA} punti."
         )
         bot_data[int(added_id)]["member_2_gift_notification"] = sent_message.id
         await save_persistence(bot_data)
 
     text = f"✅ <b>Scambio Registrato Correttamente</b>\n\n"
     if points_sender == 0:
-        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {soglia} (+1)\n"
+        text += f"🎁 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {SOGLIA} (+1)\n"
     else:
         text += (f"🔸 <u><i>Sender</i></u> {message.from_user.mention} (<code>{sender.id}</code>) → {points_sender}"
                  f" (+1)\n")
 
     if points_recipient == 0:
-        text += f"🎁 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {soglia} (+1)\n"
+        text += f"🎁 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {SOGLIA} (+1)\n"
     else:
         text += (f"🔹 <u><i>Recipient</i></u> {recipient.mention} (<code>{recipient.id}</code>) → {points_recipient}"
                  f" (+1)\n")
@@ -802,7 +821,8 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
 async def send_message_with_close_button(client: Client,
                                          message: Message | None,
                                          text: str,
-                                         chat_id=None):
+                                         chat_id=None,
+                                         thread_id=None):
     if message is None and chat_id is None:
         bot_logger.error("almeno uno tra 'message' e 'chat_id' deve essere definito")
         raise RPCError("almeno uno tra 'message' e 'chat_id' deve essere definito")
@@ -815,7 +835,8 @@ async def send_message_with_close_button(client: Client,
         chat_id=int(chat_id) if chat_id is not None else message.chat.id,
         text=text,
         parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        message_thread_id=thread_id
     )
     return message
 
