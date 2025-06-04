@@ -44,7 +44,7 @@ async def safety_check(client: Client, message: Message):
     if message.chat.type == ChatType.PRIVATE:
         return await is_admin(message.from_user.id)
 
-    elif message.chat.id == int(os.getenv("GROUP_ID")):
+    elif message.chat.id == int(os.getenv("GROUP_ID")) or message.chat.id == int(os.getenv("GIFT_GROUP_ID")):
         return True
 
     text = ("⚠️ <b>Attenzione</b>\n\n"

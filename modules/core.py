@@ -345,7 +345,8 @@ async def request_gift(client: Client, message: Message):
             chat_id=message.chat.id,
             text = f"ℹ️ Ciao {message.from_user.mention}. Questo non è il topic adibito alla richiesta di regali.\n\n"
                    f"🧭 <b>Per poter formulare una richiesta, recati nel <a href=\"{THREAD_LINK}\">topic corretto</a></b>.",
-            parse_mode=ParseMode.HTML
+            parse_mode=ParseMode.HTML,
+            message_thread_id=message.message_thread_id
         )
         return
 
