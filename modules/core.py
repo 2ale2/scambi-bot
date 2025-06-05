@@ -356,7 +356,7 @@ async def request_gift(client: Client, message: Message):
 
     if message.caption is None:
         text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
-        await send_message_with_close_button(client=client, message=message, text=text)
+        await send_message_with_close_button(client=client, message=message, text=text, thread_id=THREAD_ID)
         return
 
     if not message.media.PHOTO:
@@ -757,6 +757,9 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
     keyboard = [
         [
             InlineKeyboardButton("🖍 Annulla Scambio", callback_data=f"cancel_exchange_{added_id}")
+        ],
+        [
+            InlineKeyboardButton("🗂 Conferma e Chiudi", callback_data="confirm_and_close")
         ]
     ]
 
@@ -1189,6 +1192,7 @@ async def close_message(client: Client, callback_query: CallbackQuery):
     elif callback_query.data.startswith("confirm_and_close"):
         if await is_admin(callback_query.from_user.id):
             await safe_delete(callback_query.message)
+            return
 
     list_el = callback_query.data.split("_")
 
