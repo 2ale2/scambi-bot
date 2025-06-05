@@ -1189,6 +1189,7 @@ async def close_message(client: Client, callback_query: CallbackQuery):
             if "confirmations" in bot_data and user in bot_data["confirmations"]:
                 del bot_data["confirmations"][user]
         await safe_delete(callback_query.message)
+        return
     elif callback_query.data.startswith("confirm_and_close"):
         if await is_admin(callback_query.from_user.id):
             await safe_delete(callback_query.message)
@@ -1199,6 +1200,5 @@ async def close_message(client: Client, callback_query: CallbackQuery):
     if list_el[-1].isnumeric():
         if callback_query.from_user.id == int(list_el[-1]):
             await safe_delete(callback_query.message)
-
     else:
         await safe_delete(callback_query.message)
