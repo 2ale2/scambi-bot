@@ -1193,7 +1193,7 @@ async def close_message(client: Client, callback_query: CallbackQuery):
     elif callback_query.data.startswith("confirm_and_close"):
         if await is_admin(callback_query.from_user.id):
             await safe_delete(callback_query.message)
-            return
+        return
 
     list_el = callback_query.data.split("_")
 
