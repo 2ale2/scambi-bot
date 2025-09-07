@@ -1,17 +1,17 @@
+import locale
 import os
 import re
-import locale
+from datetime import datetime
 
+import pytz
 from pyrogram import Client
 from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 from pyrogram.errors import RPCError
-from globals import bot_data, SOGLIA, THREAD_ID, THREAD_LINK
-from datetime import datetime
-import pytz
+from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 
+from globals import SOGLIA, THREAD_ID, THREAD_LINK
 from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
-    get_user_exchanges, get_user_points, retrieve_user, get_user_gifts, execute_query_for_value
+    get_user_exchanges, get_user_points, retrieve_user, execute_query_for_value
 from modules.loggers import db_logger, bot_logger
 from modules.utils import save_persistence, safe_delete, is_admin, safety_check, delete_user_unaccepted_requests, \
     check_request_requirements
@@ -195,7 +195,7 @@ async def exchange(client: Client, message: Message):
         if not user.isnumeric():
             recipient = await retrieve_user(user)
             if not recipient:
-                await send_confirmation_request(message=message, user=user)
+                await send_confirmation_request(client=client, message=message, user=user)
                 return
             else:
                 try:
@@ -204,10 +204,10 @@ async def exchange(client: Client, message: Message):
                         user_id=dict(recipient[0])["user_id"]
                     )
                 except Exception:
-                    await send_confirmation_request(message=message, user=user)
+                    await send_confirmation_request(client=client, message=message, user=user)
                     return
         else:
-            await send_confirmation_request(message=message, user=user)
+            await send_confirmation_request(client=client, message=message, user=user)
             return
 
     if recipient.user.id == sender.id:
@@ -681,7 +681,7 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
 
     match = re.match(pattern, message.caption)
 
-    # ho già controllare se feedback è None (non lo è)
+    # ho già controllato se feedback è None (non lo è)
 
     feedback = match.group(5)
 
