@@ -778,6 +778,9 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
     if not await is_admin(callback_query.from_user.id):
         return
     exchange_infos = await get_item_infos(table="exchanges", identifier=callback_query.data.split("_")[-1])
+    if exchange_infos.get("cancelled", None):
+        return
+
     points_sender = await decrease_user_points(exchange_infos["member_1"])
     points_recipient = await decrease_user_points(exchange_infos["member_2"])
 
