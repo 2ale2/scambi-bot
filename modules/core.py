@@ -9,7 +9,7 @@ from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.errors import RPCError
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 
-from globals import SOGLIA, THREAD_ID, THREAD_LINK
+from globals import SOGLIA, THREAD_ID, THREAD_LINK, bot_data, MANUTENZIONE
 from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
     get_user_exchanges, get_user_points, retrieve_user, execute_query_for_value
 from modules.loggers import db_logger, bot_logger
@@ -53,6 +53,7 @@ async def intercept_user_message(client: Client, message: Message):
 
 async def start(client: Client, message: Message):
     global bot_data
+    global MANUTENZIONE
     await safe_delete(message)
 
     if not message.chat.type == ChatType.PRIVATE:
@@ -64,10 +65,12 @@ async def start(client: Client, message: Message):
         text = "❌ Non sei admin."
     else:
         text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
-                f"🔹 Ecco una lista dei comandi:\n\n"
-                f"\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato"
-                f".\n\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
-                f"🏆 <b>Soglia Punti Attuale</b>: <code>{SOGLIA}</code>\n\n"
+                "🔹 Ecco una lista dei comandi:\n\n"
+                "\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato"
+                ".\n\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
+                f"🏆 <b>Soglia Punti Attuale</b> – <code>{SOGLIA}</code>\n\n"
+                "🚧 <b>Modalità Manutenzione</b> – "
+                f"{'🟡 <code>Attiva</code>' if MANUTENZIONE else '🟢 <code>Disattiva</code>'}\b\b"
                 f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>\n\n"
                 f"<i>made by @Mera86 e @prof_layton</i>")
 
@@ -155,8 +158,14 @@ async def send_confirmation_request(client: Client, message: Message, user: str,
 
 async def exchange(client: Client, message: Message):
     global bot_data
+    global MANUTENZIONE
+
     if not await safety_check(client, message):
         await safe_delete(message)
+        return
+
+    if MANUTENZIONE:
+        await maintenance(client=client, message=message)
         return
 
     sender = message.from_user
@@ -338,6 +347,11 @@ async def exchange(client: Client, message: Message):
 
 async def request_gift(client: Client, message: Message):
     global bot_data
+    global MANUTENZIONE
+
+    if MANUTENZIONE:
+        await maintenance(client=client, message=message)
+        return
 
     if message.message_thread_id is None or message.message_thread_id != THREAD_ID:
         await safe_delete(message)
@@ -413,6 +427,13 @@ async def request_gift(client: Client, message: Message):
 
 async def accept_gift(client: Client, callback_query: CallbackQuery):
     global bot_data
+    global MANUTENZIONE
+
+    if MANUTENZIONE:
+        await maintenance(client=client, message=callback_query.message)
+        return
+
+
     gift_id = callback_query.data.split("_")[-1]
 
     gift = await get_item_infos(table="gifts", identifier=gift_id)
@@ -649,6 +670,11 @@ async def cancel_gift(client: Client, callback_query: CallbackQuery):
 
 
 async def confirm_exchange(client: Client, callback_query: CallbackQuery):
+    global MANUTENZIONE
+    if MANUTENZIONE:
+        await maintenance(client=client, message=callback_query.message)
+        return
+
     if (callback_query.from_user.username is None or
             callback_query.from_user.username != callback_query.data.split("_", maxsplit=3)[-1]):
         return
@@ -775,8 +801,15 @@ async def confirm_exchange(client: Client, callback_query: CallbackQuery):
 
 
 async def cancel_exchange(client: Client, callback_query: CallbackQuery):
+    global MANUTENZIONE
+
     if not await is_admin(callback_query.from_user.id):
         return
+
+    if MANUTENZIONE:
+        await maintenance(client=client, message=callback_query.message)
+        return
+
     exchange_infos = await get_item_infos(table="exchanges", identifier=callback_query.data.split("_")[-1])
     if exchange_infos.get("cancelled", None):
         return
@@ -849,6 +882,11 @@ async def send_message_with_close_button(client: Client,
 
 
 async def user_exchanges(client: Client, message: Message):
+    global MANUTENZIONE
+    if MANUTENZIONE:
+        await maintenance(client=client, message=message)
+        return
+
     await safe_delete(message)
     if not await safety_check(client, message) or not await is_admin(message.from_user.id):
         await send_message_with_close_button(
@@ -1079,8 +1117,13 @@ async def user_exchanges(client: Client, message: Message):
 
 
 async def user_points(client: Client, message: Message):
+    global MANUTENZIONE
+    if MANUTENZIONE:
+        await maintenance(client=client, message=message)
+        return
+
     await safe_delete(message)
-    if not await safety_check(client, message):
+    if not await safety_check(client, message) and not await is_admin(message.from_user.id):
         if message.chat.type == ChatType.PRIVATE:
             await send_message_with_close_button(
                 client=client,
@@ -1205,3 +1248,13 @@ async def close_message(client: Client, callback_query: CallbackQuery):
             await safe_delete(callback_query.message)
     else:
         await safe_delete(callback_query.message)
+
+
+async def maintenance(client: Client, message: Message):
+    await send_message_with_close_button(
+        client=client,
+        message=message,
+        text="🚧 <b>È attiva la modalità manutenzione</b>.\n\n"
+             "🔹 Per favore attendi prima di usare questa funzionalità."
+    )
+
