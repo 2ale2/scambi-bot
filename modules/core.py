@@ -70,7 +70,7 @@ async def start(client: Client, message: Message):
                 ".\n\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
                 f"🏆 <b>Soglia Punti Attuale</b> – <code>{SOGLIA}</code>\n\n"
                 "🚧 <b>Modalità Manutenzione</b> – "
-                f"{'🟡 <code>Attiva</code>' if MANUTENZIONE else '🟢 <code>Disattiva</code>'}\b\b"
+                f"{'🟡 <code>Attiva</code>' if MANUTENZIONE else '🟢 <code>Disattiva</code>'}\n\n"
                 f"ℹ️ <i>Questo messaggio conferma che il bot ti vede come un admin.</i>\n\n"
                 f"<i>made by @Mera86 e @prof_layton</i>")
 
