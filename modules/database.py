@@ -125,17 +125,18 @@ async def retrieve_user(username: str):
         return False
 
 
-async def decrease_user_points(user_id: int, points=1):
+async def decrease_user_points(user_id: int):
     conn = await connect_to_database()
     try:
+        old_points = await get_user_points(user_id)
         points = await conn.fetchval(
-            f"UPDATE main_table "
-            f"SET points = CASE WHEN points = 0 THEN 5 ELSE points - $1 END, "
-            f"total = total - 1 "
-            f"WHERE user_id = $2 RETURNING points;",
-            points,
+            "UPDATE main_table "
+            f"SET points = CASE WHEN points = 0 THEN {str(SOGLIA)} ELSE points - 1 END, "
+            "total = total - 1 "
+            "WHERE user_id = $1 RETURNING points;",
             user_id
         )
+        db_logger.debug(f"Aggiornamento punti {user_id} (riduzione): {old_points} -> {points}")
         return points
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
@@ -242,9 +243,8 @@ async def set_as_cancelled(table: str, identifier: int | str):
 
     conn = await connect_to_database()
     try:
-        await conn.execute(
-            query=f"UPDATE {table} SET cancelled=true WHERE id={identifier}"
-        )
+        query = f"UPDATE {table} SET cancelled = true WHERE id = $1"
+        await conn.execute(query, identifier)
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
         raise

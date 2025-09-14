@@ -257,6 +257,9 @@ async def exchange(client: Client, message: Message):
 
     forwarded = await message.forward(chat_id=int(os.getenv("DEPOSIT_CHAT_ID")))
 
+    old_sender_points = await get_user_points(sender.id)
+    old_recipient_points = await get_user_points(recipient.user.id)
+
     points_sender = await add_to_table(
         table_name="main_table",
         content={
@@ -265,6 +268,9 @@ async def exchange(client: Client, message: Message):
         }
     )
 
+    if old_sender_points and points_sender:
+        db_logger.debug(f"Aggiornamento punti utente {sender.id}: {old_sender_points} -> {points_sender}")
+
     points_recipient = await add_to_table(
         table_name="main_table",
         content={
@@ -272,6 +278,9 @@ async def exchange(client: Client, message: Message):
             "username": recipient.user.username
         }
     )
+
+    if old_recipient_points and points_recipient:
+        db_logger.debug(f"Aggiornamento punti utente {recipient.user.id}: {old_recipient_points} -> {points_recipient}")
 
     added_id = await add_to_table(
         table_name="exchanges",
@@ -814,8 +823,10 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
     if exchange_infos.get("cancelled", None):
         return
 
+    await callback_query.message.delete()
     points_sender = await decrease_user_points(exchange_infos["member_1"])
     points_recipient = await decrease_user_points(exchange_infos["member_2"])
+    await set_as_cancelled(table="exchanges", identifier=exchange_infos["id"])
 
     if points_sender is None:
         db_logger.error(f"{exchange_infos['member_1']} non trovato!")
@@ -845,8 +856,6 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
         user_id=exchange_infos["member_2"]
     )
 
-    await set_as_cancelled(table="exchanges", identifier=exchange_infos["id"])
-
     await send_message_with_close_button(
         client=client,
         message=None,
@@ -854,8 +863,6 @@ async def cancel_exchange(client: Client, callback_query: CallbackQuery):
         text=f"♻️ Scambio tra {member_1.user.mention} ({points_sender}) "
              f"e {member_2.user.mention} ({points_recipient}) <b>cancellato</b>."
     )
-
-    await callback_query.message.delete()
 
 
 async def send_message_with_close_button(client: Client,
