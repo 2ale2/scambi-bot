@@ -26,6 +26,10 @@ async def save_persistence(json_dict: dict):
         await conn.close()
 
 
+def add_fucking_at(username_without_at: str):
+    return '@' + username_without_at.removeprefix("@")
+
+
 async def is_admin(user_id: int | str) -> bool:
     return int(user_id) in [538590507, 8101457635, 6710922454, 6565193110]
 
@@ -98,14 +102,14 @@ async def delete_user_unaccepted_requests(user: str | int):
 async def check_request_requirements(user_id: int):
     gifts = await get_user_gifts(user=user_id)
 
-    if len(gifts["given"]) == 0 and len(gifts["received"]) >= 2:
+    if len(gifts["given"]) == 0 and len(gifts["requested"]) >= 2:
         return False
 
     if len(gifts["given"]) > 0:
         last_given = gifts["given"][0]
 
         valid_received = [
-            dict(item) for item in gifts["received"] if dict(item)["gifted_at"] > dict(last_given)["gifted_at"]
+            dict(item) for item in gifts["requested"] if dict(item)["gifted_at"] > dict(last_given)["gifted_at"]
         ]
 
         if len(valid_received) >= 2:

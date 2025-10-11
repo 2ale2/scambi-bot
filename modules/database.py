@@ -179,25 +179,25 @@ async def get_user_points(user: int | str):
         return res
 
 
-async def get_user_gifts(user: int | str):
+async def get_user_gifts(user: int | str, all_: bool = False):
     conn = await connect_to_database()
     gifts = {}
-    # ricevuti
+    # richiesti
     if isinstance(user, int) or user.isnumeric():
         user = int(user)
-        query = (f"SELECT * FROM gifts "
-                 f"WHERE user_id = $1 "
-                 f"AND gifted_by_id IS NOT NULL "
-                 f"AND cancelled = FALSE "
-                 f"ORDER BY gifted_at DESC")
+        query = ("SELECT * FROM gifts "
+                 "WHERE user_id = $1 "
+                 f"{'AND gifted_by_id IS NOT NULL ' if not all_ else ''} "
+                 f"{'AND cancelled = FALSE ' if not all_ else ''}"
+                 "ORDER BY gifted_at DESC")
     else:
         user = str(user)
         query = (f"SELECT * FROM gifts "
                  f"WHERE username = $1 "
-                 f"AND gifted_by_id IS NOT NULL "
-                 f"AND cancelled = FALSE ORDER BY gifted_at DESC")
+                 f"{'AND gifted_by_id IS NOT NULL ' if not all_ else ''} "
+                 "AND cancelled = FALSE ORDER BY gifted_at DESC")
     try:
-        gifts["received"] = await conn.fetch(query, user)
+        gifts["requested"] = await conn.fetch(query, user)
     except asyncpg.exceptions.PostgresError as err:
         db_logger.error(err)
         return -1
@@ -208,7 +208,7 @@ async def get_user_gifts(user: int | str):
         query = f"SELECT * FROM gifts WHERE gifted_by_id = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
     else:
         user = str(user)
-        query = f"SELECT * FROM gifts WHERE gifted_by_id_username = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
+        query = f"SELECT * FROM gifts WHERE gifted_by_username = $1 AND cancelled = FALSE ORDER BY gifted_at DESC"
     try:
         gifts["given"] = await conn.fetch(query, user)
     except asyncpg.exceptions.PostgresError as err:

@@ -118,6 +118,16 @@ async def add_handlers(app: Client):
     )
 
     app.add_handler(
+        MessageHandler(
+            callback=core.user_gifts,
+            filters=filters.command(
+                commands="regali",
+                prefixes=list(".!/")
+            )
+        )
+    )
+
+    app.add_handler(
         ChatMemberUpdatedHandler(
             callback=core.intercept_user_join,
             filters=filters.chat(os.getenv("GROUP_ID"))

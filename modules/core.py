@@ -9,12 +9,14 @@ from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.errors import RPCError
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 
+# NON È VERO: SONO USATE COME GLOBALS
+# noinspection PyUnusedImports
 from globals import SOGLIA, THREAD_ID, THREAD_LINK, bot_data, MANUTENZIONE
 from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
-    get_user_exchanges, get_user_points, retrieve_user, execute_query_for_value
+    get_user_exchanges, get_user_points, retrieve_user, execute_query_for_value, get_user_gifts
 from modules.loggers import db_logger, bot_logger
 from modules.utils import save_persistence, safe_delete, is_admin, safety_check, delete_user_unaccepted_requests, \
-    check_request_requirements
+    check_request_requirements, add_fucking_at
 
 
 async def intercept_user_join(client: Client, chat_member: ChatMemberUpdated):
@@ -66,8 +68,11 @@ async def start(client: Client, message: Message):
     else:
         text = (f"🎲 Ciao, {message.from_user.first_name}.\n\n"
                 "🔹 Ecco una lista dei comandi:\n\n"
-                "\t<code>[.!/]scambi [ID/@username]</code> – Elenca gli scambi cui ha preso parte l'utente specificato"
-                ".\n\t<code>[.!/]punti [ID/@username]</code> – Mostra i punti attuali dell'utente specificato.\n\n"
+                "  <code>[.!/]scambi [ID/@username]</code> – Elenca gli <b>scambi</b> cui ha preso "
+                "parte l'utente specificato."
+                "\n  <code>[.!/]punti [ID/@username]</code> – Mostra i <b>punti attuali</b> dell'utente specificato."
+                "\n  <code>[.!/]regali [ID/@username]</code>  – Visualizza <b>i regali chiesti e donati</b> "
+                "dall'utente specificato.\n\n"
                 f"🏆 <b>Soglia Punti Attuale</b> – <code>{SOGLIA}</code>\n\n"
                 "🚧 <b>Modalità Manutenzione</b> – "
                 f"{'🟡 <code>Attiva</code>' if MANUTENZIONE else '🟢 <code>Disattiva</code>'}\n\n"
@@ -652,7 +657,7 @@ async def cancel_gift(client: Client, callback_query: CallbackQuery):
     if not await is_admin(callback_query.from_user.id):
         return
 
-    gift_id = callback_query.data.split("_")[-1]
+    gift_id = int(callback_query.data.split("_")[-1])
     gift_infos = await get_item_infos(table="gifts", identifier=gift_id)
 
     sender = await client.get_chat_member(
@@ -1230,6 +1235,326 @@ async def user_points(client: Client, message: Message):
         text=text
     )
 
+
+async def user_gifts(client: Client, message: Message):
+    global MANUTENZIONE
+    if MANUTENZIONE:
+        await maintenance(client=client, message=message)
+        return
+
+    await safe_delete(message)
+    if not await safety_check(client, message) or not await is_admin(message.from_user.id):
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="❌ Non sei admin."
+        )
+        return
+
+    if len(message.command) <= 1:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ Devi specificare un utente.\n\n"
+                 f"<b>Esempio</b>:\n\t<code>/regali @username</code>\n\t<code>/regali 7654321</code>"
+        )
+        return
+
+    user = message.command[1]
+
+    locale.setlocale(locale.LC_TIME, 'it_IT.UTF-8')
+
+    if not user.startswith("@") and not user.isnumeric():
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="⚠️ Se specifichi un <b>ID</b>, assicurati di <b>non inserire caratteri non numerici</b>. "
+                 "Se invece indichi uno <b>username<b>, assicurati di <b>aggiungere \"@\"</b> (es.: "
+                 "<code>@username</code>, non <code>username</code>)."
+        )
+        return
+
+    try:
+        tagged = await client.get_chat_member(
+            chat_id=int(os.getenv("GROUP_ID")),
+            user_id=int(user) if user.isnumeric() else str(user)
+        )
+    except KeyError as e:
+        bot_logger.error(f"error retrieving user {user} from group: {e}")
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=f"⚠️ Non ho potuto trovare l'utente <code>{user}</code>. Riprova."
+        )
+        return
+    except Exception:
+        tagged = None
+
+    res = await get_user_gifts(
+        user=str(tagged.user.id) if tagged is not None else str(user).removeprefix('@'),
+        all_=True
+    )
+
+    if res == -1:
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text="❌ Non è stato possibile interrogare il database."
+        )
+        return
+
+    user_text = user if not user.isnumeric() else f'<code>{user}</code>'
+
+    if len(res["requested"]) == 0 and len(res["given"]):
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=f"ℹ️ Sembra che l'utente {user_text} non abbia fatto o donato alcun regalo."
+        )
+        return
+
+    text = f"🔎 <b>Regali di {tagged.user.mention if tagged is not None else user}</b>\n\n"
+
+    tot_requested = len(res["requested"])
+
+    text += f"⬅ <b>Richiesti</b> (<code>{tot_requested}</code>)\n"
+
+    if tot_requested == 0:
+        text += "\nℹ Nessun regalo richiesto.\n\n"
+    else:
+        for count, el in enumerate(requested := res["requested"], start=1):
+            gift = dict(el)
+            if gift.get("gifted_by_id", None):
+                identifier = '@' + gift['gifted_by_username'] if gift['gifted_by_username'] else gift['gifted_by_id']
+                try:
+                    recipient = await client.get_chat_member(
+                        chat_id=int(os.getenv("GROUP_ID")),
+                        user_id=identifier
+                    )
+                except Exception:
+                    recipient = None
+            else:
+                recipient = False  # Regalo non ancora ricevuto
+
+            if count % 6 != 0:
+                text += f"\n       🎁. <b>Regalo {gift['id']}</b>\n       🔹 <u>Richiesto Da</u> – "
+                if tagged is not None and (tagged.status.name != "LEFT" and tagged.status.name != "BANNED"):
+                    if tagged.status.name != "LEFT" and tagged.status.name != "BANNED":
+                        if tagged.user.username:
+                            mention = add_fucking_at(tagged.user.username)
+                        else:
+                            mention = tagged.user.first_name
+                        text += f"{mention} (<code>{gift['user_id']}</code>)"
+                else:
+                    gift_username = '@' + gift['username']
+                    gift_id = gift['user_id']
+                    if gift_username:
+                        text += f"{gift_username} (<code>{gift_id}</code>)"
+                    else:
+                        text += f"<code>{gift_id}</code>"
+
+                text += "\n       🔸 <u>Donato Da</u> – "
+
+                if recipient is False:
+                    text += "<i>Non (ancora) ricevuto</i>\n"
+                elif recipient is None:
+                    if r := gift.get("gifted_by_username", None):
+                        text += f"{'@' + r} (<code>{gift.get('gifted_by_id')}</code>)\n"
+                    else:
+                        text += f"<code>{gift.get('gifted_by_id')}</code>\n"
+                else:
+                    if recipient.status.name != "LEFT" and recipient.status.name != "BANNED":
+                        if recipient.user.username:
+                            mention = add_fucking_at(recipient.user.username)
+                        else:
+                            mention = recipient.user.first_name
+                        text += f"{mention} (<code>{recipient.user.id}</code>)\n"
+                    else:
+                        gifted_username = '@' + gift['gifted_by_username']
+                        gifted_id = gift['gifted_by_id']
+                        if gifted_username:
+                            text += f"{gifted_username} (<code>{gifted_id}</code>)\n"
+                        else:
+                            text += f"<code>{gifted_id}</code>\n"
+
+                text += f"       ❔ <u>Richiesta</u> – 🔗 <a href=\"{gift['request_link']}\">Link</a>\n"
+                if recipient is not False:
+                    gifting_time = gift['gifted_at'].strftime('%a %d %b %Y, %H:%M')
+                else:
+                    gifting_time = "<code>None</code>\n"
+                text += f"       📆 <u>Regalo in Data</u> – {gifting_time}\n"
+                text += f"       ♻ <u>Cancellato</u> – <code>{gift['cancelled']}</code>\n"
+            else:
+                await send_message_with_close_button(
+                    client=client,
+                    message=message,
+                    text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
+                )
+                text = f"ㅤㅤ🎁. <b>Regalo {gift['id']}</b>\n       🔹 <u>Richiesto Da</u> – "
+                if tagged is not None and (tagged.status.name != "LEFT" and tagged.status.name != "BANNED"):
+                    mention = add_fucking_at(tagged.user.username) if tagged.user.username else tagged.user.first_name
+                    text += f"{mention} (<code>{gift['user_id']}</code>)"
+                else:
+                    gift_username = '@' + gift['username']
+                    gift_id = gift['user_id']
+                    if gift_username:
+                        text += f"{gift_username} (<code>{gift_id}</code>)"
+                    else:
+                        text += f"<code>{gift_id}</code>"
+
+                text += "\n       🔸 <u>Donato Da</u> – "
+
+                if recipient is False:
+                    text += "<i>Non (ancora) ricevuto</i>\n"
+                elif recipient is None:
+                    if r := gift.get("gifted_by_username", None):
+                        text += f"{'@' + r} (<code>{gift.get('gifted_by_id')}</code>)\n"
+                    else:
+                        text += f"<code>{gift.get('gifted_by_id')}</code>\n"
+                else:
+                    if recipient.status.name != "LEFT" and recipient.status.name != "BANNED":
+                        if recipient.user.username:
+                            mention = add_fucking_at(recipient.user.username)
+                        else:
+                            mention = recipient.user.first_name
+                        text += f"{mention} (<code>{recipient.user.id}</code>)\n"
+                    else:
+                        gifted_username = '@' + gift['gifted_by_username']
+                        gifted_id = gift['gifted_by_id']
+                        if gifted_username:
+                            text += f"{gifted_username} (<code>{gifted_id}</code>)\n"
+                        else:
+                            text += f"<code>{gifted_id}</code>\n"
+
+                text += f"       ❔ <u>Richiesta</u> – 🔗 <a href=\"{gift['request_link']}\">Link</a>\n"
+                if recipient is not False:
+                    gifting_time = gift['gifted_at'].strftime('%a %d %b %Y, %H:%M')
+                else:
+                    gifting_time = "<code>None</code>\n"
+                text += f"       📆 <u>Regalo in Data</u> – {gifting_time}\n"
+                text += f"       ♻ <u>Cancellato</u> – <code>{gift['cancelled']}</code>\n"
+
+    tot_given = len(res["given"])
+
+    text += f"\n\n➡ <b>Donati</b> (<code>{tot_given}</code>)\n"
+
+    if tot_given == 0:
+        text += "\nℹ Nessun regalo donato.\n"
+    else:
+        for count, el in enumerate(given := res["given"], start=1):
+            gift = dict(el)
+            # Tutti questi regali hanno per forza almeno 'gifted_by_id'
+            try:
+                identifier = '@' + gift['username'] if gift['username'] else gift['user_id']
+                recipient = await client.get_chat_member(
+                    chat_id=int(os.getenv("GROUP_ID")),
+                    user_id=gift['username'] or gift['user_id']
+                )
+            except Exception:
+                recipient = None
+
+            if count % 6 != 0:
+                text += f"\n       🎁. <b>Regalo {gift['id']}</b>\n       🔹 <u>Richiesto Da</u> – "
+                if recipient is not None and (recipient.status.name != "LEFT" and recipient.status.name != "BANNED"):
+                    if recipient.user.username:
+                        mention = add_fucking_at(recipient.user.username)
+                    else:
+                        mention = recipient.user.first_name
+                    text += f"{mention} (<code>{recipient.user.id}</code>)"
+                else:
+                    gift_username = '@' + gift['username']
+                    gift_id = gift['user_id']
+                    if gift_username:
+                        text += f"{gift_username} (<code>{gift_id}</code>)"
+                    else:
+                        text += f"<code>{gift_id}</code>"
+
+                text += "\n       🔸 <u>Donato Da</u> – "
+
+                if tagged is None:
+                    if r := gift.get("gifted_by_username", None):
+                        text += f"{'@' + r} (<code>{gift.get('gifted_by_id')}</code>)\n"
+                    else:
+                        text += f"<code>{gift.get('gifted_by_id')}</code>\n"
+                else:
+                    if tagged.status.name != "LEFT" and tagged.status.name != "BANNED":
+                        if tagged.user.username:
+                            mention = add_fucking_at(tagged.user.username)
+                        else:
+                            mention = tagged.user.first_name
+                        text += f"{mention} (<code>{gift['user_id']}</code>)\n"
+                    else:
+                        gifted_username = '@' + gift['gifted_by_username']
+                        gifted_id = gift['gifted_by_id']
+                        if gifted_username:
+                            text += f"{gifted_username} (<code>{gifted_id}</code>)\n"
+                        else:
+                            text += f"<code>{gifted_id}</code>\n"
+
+                text += f"       ❔ <u>Richiesta</u> – 🔗 <a href=\"{gift['request_link']}\">Link</a>\n"
+                if recipient is not False:
+                    gifting_time = gift['gifted_at'].strftime('%a %d %b %Y, %H:%M')
+                else:
+                    gifting_time = "<code>None</code>"
+                text += f"       📆 <u>Regalo in Data</u> – {gifting_time}\n"
+                text += f"       ♻ <u>Cancellato</u> – <code>{gift['cancelled']}</code>\n"
+            else:
+                await send_message_with_close_button(
+                    client=client,
+                    message=message,
+                    text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
+                )
+                text = f"ㅤㅤ🎁. <b>Regalo {gift['id']}</b>\n       🔹 <u>Richiesto Da</u> – "
+                if recipient is not None and (recipient.status.name != "LEFT" and recipient.status.name != "BANNED"):
+                    if recipient.user.username:
+                        mention = add_fucking_at(recipient.user.username)
+                    else:
+                        mention = recipient.user.first_name
+                    text += f"{mention} (<code>{recipient.user.id}</code>)"
+                else:
+                    gift_username = '@' + gift['username']
+                    gift_id = gift['user_id']
+                    if gift_username:
+                        text += f"{gift_username} (<code>{gift_id}</code>)"
+                    else:
+                        text += f"<code>{gift_id}</code>"
+
+                text += "\n       🔸 <u>Donato Da</u> – "
+
+                if tagged is None:
+                    if r := gift.get("gifted_by_username", None):
+                        text += f"{'@' + r} (<code>{gift.get('gifted_by_id')}</code>)\n"
+                    else:
+                        text += f"<code>{gift.get('gifted_by_id')}</code>\n"
+                else:
+                    if tagged.status.name != "LEFT" and tagged.status.name != "BANNED":
+                        if tagged.status.name != "LEFT" and tagged.status.name != "BANNED":
+                            if tagged.user.username:
+                                mention = add_fucking_at(tagged.user.username)
+                            else:
+                                mention = tagged.user.first_name
+                            text += f"{mention} (<code>{gift['user_id']}</code>)\n"
+                    else:
+                        gifted_username = '@' + gift['gifted_by_username']
+                        gifted_id = gift['gifted_by_id']
+                        if gifted_username:
+                            text += f"{gifted_username} (<code>{gifted_id}</code>)\n"
+                        else:
+                            text += f"<code>{gifted_id}</code>\n"
+
+                text += f"       ❔ <u>Richiesta</u> – 🔗 <a href=\"{gift['request_link']}\">Link</a>\n"
+                if recipient is not False:
+                    gifting_time = gift['gifted_at'].strftime('%a %d %b %Y, %H:%M')
+                else:
+                    gifting_time = "<code>None</code>"
+                text += f"       📆 <u>Regalo in Data</u> – {gifting_time}\n"
+                text += f"       ♻ <u>Cancellato</u> – <code>{gift['cancelled']}</code>\n"
+
+    await send_message_with_close_button(
+        client=client,
+        message=message,
+        text=text + "\n\n🆘 Usa il tuo <b>bot di moderazione</b> per maggiori info sugli utenti citati."
+    )
 
 # serve per evitare eccezioni
 # noinspection PyUnusedLocal
