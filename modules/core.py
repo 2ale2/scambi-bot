@@ -566,7 +566,7 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             photo=callback_query.message.photo.file_id,
             chat_id=callback_query.message.chat.id,
             caption=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention} sta accettando la richiesta "
-                 f"di un nuovo regalo da {user_requesting.user.mention}.\n"
+                 f"di un nuovo regalo da {user_requesting.user.mention}.\n\n"
                  "<blockquote>Se non lo annulli e le admin confermano, "
                  "<b>ti assumi il dovere di fare questo regalo</b>.</blockquote>\n\n"
                  "⏳ <i>Attendo la conferma di un'admin</i>",
