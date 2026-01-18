@@ -2,4 +2,5 @@ bot_data = {}
 SOGLIA = 15
 THREAD_ID = 480884
 THREAD_LINK = "https://t.me/c/2063162360/480884"
+GROUP_LINK = "https://t.me/+6C-G0sLnCYZjYzE0"
 MANUTENZIONE = False

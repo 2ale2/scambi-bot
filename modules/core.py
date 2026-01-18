@@ -11,7 +11,7 @@ from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, 
 
 # NON È VERO: SONO USATE COME GLOBALS
 # noinspection PyUnusedImports
-from globals import SOGLIA, THREAD_ID, THREAD_LINK, bot_data, MANUTENZIONE
+from globals import SOGLIA, THREAD_ID, THREAD_LINK, bot_data, MANUTENZIONE, GROUP_LINK
 from modules.database import add_to_table, get_item_infos, decrease_user_points, set_as_cancelled, \
     get_user_exchanges, get_user_points, retrieve_user, execute_query_for_value, get_user_gifts
 from modules.loggers import db_logger, bot_logger
@@ -367,12 +367,24 @@ async def request_gift(client: Client, message: Message):
         await maintenance(client=client, message=message)
         return
 
-    if message.message_thread_id is None or message.message_thread_id != THREAD_ID:
+    # THE BOT HAS BEEN MOVED TO A SINGLE TOPIC GROUP
+    # if message.message_thread_id is None or message.message_thread_id != THREAD_ID:
+    #     await safe_delete(message)
+    #     await client.send_message(
+    #         chat_id=message.chat.id,
+    #         text = f"ℹ️ Ciao {message.from_user.mention}. Questo non è il topic adibito alla richiesta di regali.\n\n"
+    #                f"🧭 <b>Per poter formulare una richiesta, recati nel <a href=\"{THREAD_LINK}\">topic corretto</a></b>.",
+    #         parse_mode=ParseMode.HTML,
+    #         message_thread_id=message.message_thread_id
+    #     )
+    #     return
+
+    if message.message_thread_id is not None and message.message_thread_id != 1:
         await safe_delete(message)
         await client.send_message(
             chat_id=message.chat.id,
-            text = f"ℹ️ Ciao {message.from_user.mention}. Questo non è il topic adibito alla richiesta di regali.\n\n"
-                   f"🧭 <b>Per poter formulare una richiesta, recati nel <a href=\"{THREAD_LINK}\">topic corretto</a></b>.",
+            text = f"ℹ️ Ciao {message.from_user.mention}. Questo non è la chat adibita alla richiesta di regali.\n\n"
+                   f"🧭 <b>Per poter formulare una richiesta, recati nel <a href=\"{GROUP_LINK}\">gruppo</a></b>.",
             parse_mode=ParseMode.HTML,
             message_thread_id=message.message_thread_id
         )
@@ -384,12 +396,22 @@ async def request_gift(client: Client, message: Message):
 
     if message.caption is None:
         text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
-        await send_message_with_close_button(client=client, message=message, text=text, thread_id=THREAD_ID)
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=text,
+            # thread_id=THREAD_ID
+        )
         return
 
     if not message.media.PHOTO:
         text = "⚠️ Puoi allegare solo uno <b>screenshot</b>."
-        await send_message_with_close_button(client=client, message=message, text=text, thread_id=THREAD_ID)
+        await send_message_with_close_button(
+            client=client,
+            message=message,
+            text=text,
+            # thread_id=THREAD_ID
+        )
         return
 
     await delete_user_unaccepted_requests(user=message.from_user.id)
@@ -402,7 +424,7 @@ async def request_gift(client: Client, message: Message):
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
             ]),
-            message_thread_id=THREAD_ID
+            # message_thread_id=THREAD_ID
         )
         await safe_delete(message)
         return
@@ -430,7 +452,7 @@ async def request_gift(client: Client, message: Message):
             [InlineKeyboardButton("🎁 Accetta Richiesta", callback_data=f"accept_gift_for_{added_id}")],
             [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
         ]),
-        message_thread_id=THREAD_ID
+        # message_thread_id=THREAD_ID
     )
 
     await execute_query_for_value(
@@ -446,7 +468,6 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
     if MANUTENZIONE:
         await maintenance(client=client, message=callback_query.message)
         return
-
 
     gift_id = callback_query.data.split("_")[-1]
 
@@ -489,7 +510,7 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             message=None,
             chat_id=callback_query.message.chat.id,
             text=text,
-            thread_id=THREAD_ID
+            # thread_id=THREAD_ID
         )
         await safe_delete(callback_query.message)
         return
@@ -516,14 +537,14 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                      f"delle informazioni dell'utente <code>{gifting_by_id}>/code>.\n\n"
                      f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
                      f"l'amministratore per assistenza.",
-                thread_id=THREAD_ID
+                # thread_id=THREAD_ID
             )
             return
 
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text=f"✅ Confermo",
+                    text=f"👮🏻‍♀️ Conferma",
                     callback_data=f"accepting_{callback_query.from_user.id}_gift_{gift_id}"
                 ),
                 InlineKeyboardButton(
@@ -542,18 +563,22 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
         await client.send_photo(
             photo=callback_query.message.photo.file_id,
             chat_id=callback_query.message.chat.id,
-            caption=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention}, stai accettando la richiesta "
-                 f"di un nuovo regalo da {user_requesting.user.mention}. "
-                 f"<b>Se confermi, ti assumi il dovere di fare questo regalo</b>.\n\n"
-                 f"🔸 Confermi?",
+            caption=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention} sta accettando la richiesta "
+                 f"di un nuovo regalo da {user_requesting.user.mention}.\n"
+                 "<blockquote>Se non lo annulli e le admin confermano, "
+                 "<b>ti assumi il dovere di fare questo regalo</b>.</blockquote>\n\n"
+                 "⏳ <i>Attendo la conferma di un'admin</i>",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.HTML,
-            message_thread_id=THREAD_ID
+            # message_thread_id=THREAD_ID
         )
 
         await safe_delete(callback_query.message)
 
     elif "accepting" in callback_query.data and "gift" in callback_query.data:
+        if not await is_admin(callback_query.from_user.id):
+            return
+
         listed = callback_query.data.split("_")
         listed.pop(0)
         listed.pop(1)
@@ -577,28 +602,47 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
                      f"delle informazioni dell'utente <code>{gift["user_id"]}>/code>.\n\n"
                      f"🆘 Se l'utente che ha formulato la richiesta non è uscito nel frattempo, contatta "
                      f"l'amministratore per assistenza.",
-                thread_id=THREAD_ID
+                # thread_id=THREAD_ID
+            )
+            return
+
+        try:
+            user_accepting = await client.get_chat_member(
+                chat_id=callback_query.message.chat.id,
+                user_id=listed["accepting"]
+            )
+        except Exception as e:
+            bot_logger.error(msg=f"Errore durante il reperimento delle informazioni dell'utente {listed["accepting"]}: {e}")
+            await send_message_with_close_button(
+                client=client,
+                message=None,
+                chat_id=callback_query.message.chat.id,
+                text=f"⚠️ C'è stato un errore durante il reperimento "
+                     f"delle informazioni dell'utente <code>{listed["accepting"]}>/code>.\n\n"
+                     f"🆘 Se l'utente che ha accettato la richiesta non è uscito nel frattempo, contatta "
+                     f"l'amministratore per assistenza.",
+                # thread_id=THREAD_ID
             )
             return
 
         if not await check_request_requirements(user_id=listed["requesting"]):
             await client.send_message(
                 chat_id=callback_query.message.chat.id,
-                text=f"⚠️ <b>Warning</b>\n\n🔸 Non puoi accettare questo regalo perché "
+                text=f"⚠️ <b>Warning</b>\n\n🔸 Non è possibile accettare questo regalo perché "
                      f"nel frattempo <b>{user_requesting.user.mention} ha raggiunto il limite di 2 regali</b>. "
                      "Per poterne chiedere un altro, deve prima farne almeno uno.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
                 ]),
-                message_thread_id=THREAD_ID
+                # message_thread_id=THREAD_ID
             )
             await safe_delete(callback_query.message)
             return
 
-        if listed["accepting"] != callback_query.from_user.id:
-            return
+        # if listed["accepting"] != callback_query.from_user.id:
+        #     return
 
-        user_accepting = callback_query.from_user
+        user_accepting = user_accepting.user
 
         await execute_query_for_value(
             query=f"UPDATE gifts "
@@ -621,7 +665,7 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
         await client.edit_message_caption(
             chat_id=callback_query.message.chat.id,
             message_id=callback_query.message.id,
-            caption=f"✅ <b>Regalo Accettato</b>\n\n"
+            caption=f"✅ <b>Regalo Approvato</b>\n\n"
                  f"🔸 <b>{user_accepting.mention} ha accettato il regalo "
                  f"richiesto da {user_requesting.user.mention}</b>.",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -677,7 +721,7 @@ async def cancel_gift(client: Client, callback_query: CallbackQuery):
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🚮 Chiudi – Solo Admin", callback_data="close_admin")]
         ]),
-        message_thread_id=THREAD_ID
+        # message_thread_id=THREAD_ID
     )
 
     await safe_delete(callback_query.message)

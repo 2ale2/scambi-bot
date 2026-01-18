@@ -13,6 +13,7 @@ import asyncio
 
 import pyrogram.errors
 from dotenv import load_dotenv
+# noinspection PyUnusedImports
 from globals import bot_data
 
 logging.basicConfig(
