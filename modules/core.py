@@ -395,6 +395,7 @@ async def request_gift(client: Client, message: Message):
         return
 
     if message.caption is None:
+        await safe_delete(message)
         text = "⚠️ Ricordati di allegare uno <b>screenshot</b>."
         await send_message_with_close_button(
             client=client,
@@ -405,6 +406,7 @@ async def request_gift(client: Client, message: Message):
         return
 
     if not message.media.PHOTO:
+        await safe_delete(message)
         text = "⚠️ Puoi allegare solo uno <b>screenshot</b>."
         await send_message_with_close_button(
             client=client,
