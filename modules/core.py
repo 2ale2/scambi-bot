@@ -676,7 +676,7 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
 
     elif callback_query.data.startswith("abort_"):
         user_id = callback_query.from_user.id
-        if user_id != int(callback_query.data.split("_")[1]) and not await is_admin(user_id):
+        if not await is_admin(user_id):
             return
 
         try:
