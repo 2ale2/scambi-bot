@@ -383,7 +383,7 @@ async def request_gift(client: Client, message: Message):
         await safe_delete(message)
         await client.send_message(
             chat_id=message.chat.id,
-            text = f"ℹ️ Ciao {message.from_user.mention}. Questo non è la chat adibita alla richiesta di regali.\n\n"
+            text = f"ℹ️ Ciao {message.from_user.mention}. Questa non è la chat adibita alla richiesta di regali.\n\n"
                    f"🧭 <b>Per poter formulare una richiesta, recati nel <a href=\"{GROUP_LINK}\">gruppo</a></b>.",
             parse_mode=ParseMode.HTML,
             message_thread_id=message.message_thread_id
@@ -567,7 +567,7 @@ async def accept_gift(client: Client, callback_query: CallbackQuery):
             chat_id=callback_query.message.chat.id,
             caption=f"❓ <b>Accettazione Richiesta</b>\n\n🎖 {callback_query.from_user.mention} sta accettando la richiesta "
                  f"di un nuovo regalo da {user_requesting.user.mention}.\n\n"
-                 "<blockquote>Se non lo annulli e le admin confermano, "
+                 "<blockquote>ℹ Se non chiedi di annullarlo e le admin confermano, "
                  "<b>ti assumi il dovere di fare questo regalo</b>.</blockquote>\n\n"
                  "⏳ <i>Attendo la conferma di un'admin</i>",
             reply_markup=InlineKeyboardMarkup(keyboard),
